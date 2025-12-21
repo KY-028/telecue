@@ -1,6 +1,6 @@
 import { View, Text, TouchableOpacity, ScrollView } from 'react-native';
 import { Link, useRouter } from 'expo-router';
-import { useScriptStore } from '../src/store/useScriptStore';
+import { useScriptStore } from '../store/useScriptStore';
 import { Plus, History } from 'lucide-react-native';
 
 export default function Home() {

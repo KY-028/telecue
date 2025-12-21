@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { Stack } from 'expo-router';
-import { initDatabase } from '../src/db/schema';
+import { initDatabase } from '../db/schema';
 import '../global.css';
 
 export default function RootLayout() {

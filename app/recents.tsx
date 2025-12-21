@@ -2,9 +2,9 @@ import { View, Text, TouchableOpacity, FlatList } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import * as SQLite from 'expo-sqlite';
-import { useScriptStore } from '../src/store/useScriptStore';
+import { useScriptStore } from '../store/useScriptStore';
 import { FileText, ChevronRight } from 'lucide-react-native';
-import { DATABASE_NAME } from '../src/db/schema';
+import { DATABASE_NAME } from '../db/schema';
 
 type Script = {
     id: number;

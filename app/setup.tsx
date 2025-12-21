@@ -1,6 +1,6 @@
 import { View, Text, TouchableOpacity, ScrollView, Switch } from 'react-native';
 import { useRouter } from 'expo-router';
-import { useScriptStore } from '../src/store/useScriptStore';
+import { useScriptStore } from '../store/useScriptStore';
 import { Monitor, Smartphone, Type, MoveHorizontal, Gauge } from 'lucide-react-native';
 
 import Slider from '@react-native-community/slider';

@@ -2,10 +2,10 @@ import { View, Text, TextInput, TouchableOpacity, ScrollView } from 'react-nativ
 import { useEffect, useRef } from 'react';
 
 import { useRouter } from 'expo-router';
-import { useScriptStore } from '../src/store/useScriptStore';
+import { useScriptStore } from '../store/useScriptStore';
 import { Save } from 'lucide-react-native';
 import * as SQLite from 'expo-sqlite';
-import { DATABASE_NAME } from '../src/db/schema';
+import { DATABASE_NAME } from '../db/schema';
 
 export default function ScriptEditor() {
     const router = useRouter();
