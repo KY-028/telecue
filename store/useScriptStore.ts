@@ -17,8 +17,10 @@ export interface Script {
 interface ScriptState {
     activeScript: Script | null;
     recentScripts: Script[];
+    toastMessage: string | null;
     setActiveScript: (script: Script | null) => void;
     setRecentScripts: (scripts: Script[]) => void;
+    setToastMessage: (message: string | null) => void;
     updateActiveScriptSettings: (settings: Partial<Script>) => void;
     resetActiveScript: () => void;
 }
@@ -26,8 +28,10 @@ interface ScriptState {
 export const useScriptStore = create<ScriptState>((set) => ({
     activeScript: null,
     recentScripts: [],
+    toastMessage: null,
     setActiveScript: (script) => set({ activeScript: script }),
     setRecentScripts: (scripts) => set({ recentScripts: scripts }),
+    setToastMessage: (message) => set({ toastMessage: message }),
     resetActiveScript: () => set({
         activeScript: {
             title: '',
