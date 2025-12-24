@@ -39,7 +39,7 @@ export const useScriptStore = create<ScriptState>((set) => ({
             font_family: 'System',
             font_size: 3,
             margin: 20,
-            speed: 3,
+            speed: 1,
             is_mirrored_h: false,
             is_mirrored_v: false,
             mode: 'phone',

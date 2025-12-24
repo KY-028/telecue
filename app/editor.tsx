@@ -1,4 +1,4 @@
-import { View, Text, TextInput, TouchableOpacity, ScrollView, KeyboardAvoidingView, Platform, Keyboard, InputAccessoryView } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, ScrollView, KeyboardAvoidingView, Platform, Keyboard, InputAccessoryView, useWindowDimensions } from 'react-native';
 import { useEffect, useRef, useState } from 'react';
 import { useHeaderHeight } from '@react-navigation/elements';
 
@@ -10,6 +10,8 @@ import { DATABASE_NAME } from '../db/schema';
 
 export default function ScriptEditor() {
     const router = useRouter();
+    const { width, height } = useWindowDimensions();
+    const isLandscape = width > height;
     const { activeScript, setActiveScript, setToastMessage } = useScriptStore();
     const [isKeyboardVisible, setKeyboardVisible] = useState(false);
 
@@ -106,7 +108,10 @@ export default function ScriptEditor() {
                 className="bg-zinc-950"
                 keyboardVerticalOffset={headerHeight}
             >
-                <View className="flex-1 p-6">
+                <View
+                    className="flex-1 p-6"
+                    style={{ paddingHorizontal: isLandscape ? 60 : 24 }}
+                >
                     <TextInput
                         placeholder="Script Title"
                         placeholderTextColor="#52525b"

@@ -3,11 +3,17 @@ import { Stack } from 'expo-router';
 import { initDatabase } from '../db/schema';
 import '../global.css';
 import { StatusBar } from 'expo-status-bar';
+import * as ScreenOrientation from 'expo-screen-orientation';
 
 export default function RootLayout() {
-    // Load Database
+    // Load Database & Orientation
     useEffect(() => {
         initDatabase().catch(err => console.error("Database init error:", err));
+        
+        const unlockOrientation = async () => {
+            await ScreenOrientation.unlockAsync();
+        };
+        unlockOrientation();
     }, []);
 
     return (

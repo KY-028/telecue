@@ -14,7 +14,7 @@ export const initDatabase = async () => {
       font_family TEXT DEFAULT 'System',
       font_size INTEGER DEFAULT 3,
       margin INTEGER DEFAULT 20,
-      speed INTEGER DEFAULT 3,
+      speed INTEGER DEFAULT 1,
       is_mirrored_h INTEGER DEFAULT 0,
       is_mirrored_v INTEGER DEFAULT 0,
       mode TEXT DEFAULT 'phone',

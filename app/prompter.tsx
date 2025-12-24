@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, TouchableOpacity, Dimensions, ScrollView, StyleSheet, Alert, Animated as RNAnimated, Linking } from 'react-native';
+import { View, Text, TouchableOpacity, Dimensions, ScrollView, StyleSheet, Alert, Animated as RNAnimated, Linking, useWindowDimensions } from 'react-native';
 import { CameraView, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
 import { useRouter } from 'expo-router';
 import { useScriptStore } from '../store/useScriptStore';
@@ -21,6 +21,8 @@ import Slider from '@react-native-community/slider';
 export default function Teleprompter() {
     // --- Hooks & Store ---
     const router = useRouter();
+    const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+    const isLandscape = windowWidth > windowHeight;
     const { activeScript, updateActiveScriptSettings } = useScriptStore();
     const [permission, requestPermission] = useCameraPermissions();
     const [micPermission, requestMicPermission] = useMicrophonePermissions();
@@ -62,11 +64,6 @@ export default function Teleprompter() {
     useEffect(() => {
         let initialBrightness: number;
 
-        const setupOrientation = async () => {
-            await ScreenOrientation.unlockAsync();
-        };
-        setupOrientation();
-
         const setupBrightness = async () => {
             try {
                 initialBrightness = await Brightness.getBrightnessAsync();
@@ -81,7 +78,6 @@ export default function Teleprompter() {
         setupBrightness();
 
         return () => {
-            ScreenOrientation.unlockAsync();
             if (initialBrightness !== undefined) {
                 Brightness.setBrightnessAsync(initialBrightness);
             }
@@ -306,9 +302,9 @@ export default function Teleprompter() {
             )}
 
             {/* Top Left Back Button */}
-            <View className="absolute top-12 left-6 z-50 flex-row gap-4">
+            <View className={`absolute ${isLandscape ? "top-6 left-10" : "top-12 left-6"} z-50 flex-row gap-4`}>
                 <TouchableOpacity
-                    className="bg-black/60 p-3 px-5 rounded-full border border-white/20 blur-md flex-row items-center gap-2"
+                    className={`bg-black/60 ${isLandscape ? "p-2 px-3" : "p-3 px-5"} rounded-full border border-white/20 blur-md flex-row items-center gap-2`}
                     onPress={handleBack}
                 >
                     <ChevronLeft color="white" size={20} />
@@ -323,11 +319,12 @@ export default function Teleprompter() {
                     showsVerticalScrollIndicator={false}
                     style={{
                         flex: 1,
-                        backgroundColor: activeScript?.mode === 'phone' ? 'rgba(0,0,0,0.5)' : 'black'
+                        backgroundColor: activeScript?.mode === 'phone' ? 'rgba(0,0,0,0.5)' : 'black',
+                        paddingHorizontal: isLandscape ? 60 : 24
                     }}
                     contentContainerStyle={{ flexGrow: 1 }}
                 >
-                    <Animated.View style={[animatedTextStyle, { width: '100%', alignItems: 'center', paddingHorizontal: activeScript?.margin || 20 }]}>
+                    <Animated.View style={[animatedTextStyle, { width: '100%', alignItems: 'center', paddingHorizontal: activeScript?.margin ?? 0 }]}>
                         {/* Padding top to start text in middle */}
                         <View style={{ height: containerHeight / 2 }} />
 
@@ -355,10 +352,16 @@ export default function Teleprompter() {
             </View>
 
             {/* Floating Control Bar */}
-            <View className="absolute bottom-10 left-4 right-4 bg-black/80 rounded-3xl border border-white/10 p-5 pt-0 z-50 shadow-2xl">
+            <View
+                className={`absolute ${isLandscape ? "bottom-4" : "bottom-6"} bg-black/80 rounded-3xl border border-white/10 p-4 pt-0 z-50 shadow-2xl`}
+                style={{
+                    left: isLandscape ? 120 : 24,
+                    right: isLandscape ? 120 : 24
+                }}
+            >
                 {activeScript?.mode === 'phone' && !isRecording && (
                     <TouchableOpacity
-                        className="absolute -top-16 left-0 bg-black/60 p-3 rounded-full border border-white/20 blur-md items-center justify-center"
+                        className="absolute -top-14 left-0 bg-black/60 p-2.5 rounded-full border border-white/20 blur-md items-center justify-center"
                         onPress={() => setCameraFacing(prev => prev === 'front' ? 'back' : 'front')}
                     >
                         <SwitchCamera color="white" size={20} />
@@ -366,26 +369,26 @@ export default function Teleprompter() {
                 )}
 
                 {/* Progress Bar */}
-                <View className="h-1 bg-zinc-700 rounded-full overflow-hidden mb-6 self-center" style={{ width: '95%' }}>
+                <View className="h-1 bg-zinc-700 rounded-full overflow-hidden mb-3 self-center" style={{ width: '95%' }}>
                     <Animated.View className="h-full bg-orange-500" style={progressStyle} />
                 </View>
 
                 {/* Speed Slider */}
                 {(scrollMode === 'fixed' || scrollMode === 'wpm') && (
                     <View>
-                        <View className="items-center mb-2">
+                        <View className="items-center">
                             <Text className="text-white text-[10px] font-bold opacity-50">
                                 {scrollMode === 'wpm'
                                     ? `${speedToWpm(normalizedToSpeed(displayValue))} WPM`
                                     : `SPEED: ${normalizedToSpeed(displayValue).toFixed(1)}x`}
                             </Text>
                         </View>
-                        <View className="flex-row items-center justify-between mb-4">
+                        <View className={`flex-row items-center justify-between ${isLandscape ? "" : "mb-2"}`}>
                             <View className="w-10 h-5 items-center justify-center">
-                                <Animated.Text style={wpmLabelStyle} className="absolute text-white text-xs font-bold">
+                                <Animated.Text style={wpmLabelStyle} className="absolute text-white text-[10px] font-bold">
                                     {Math.round(WPM_MIN)}
                                 </Animated.Text>
-                                <Animated.Text style={fixedLabelStyle} className="absolute text-white text-xs font-bold">
+                                <Animated.Text style={fixedLabelStyle} className="absolute text-white text-[10px] font-bold">
                                     SLOW
                                 </Animated.Text>
                             </View>
@@ -411,10 +414,10 @@ export default function Teleprompter() {
                                 />
                             </View>
                             <View className="w-10 h-5 items-center justify-center">
-                                <Animated.Text style={wpmLabelStyle} className="absolute text-white text-xs font-bold">
+                                <Animated.Text style={wpmLabelStyle} className="absolute text-white text-[10px] font-bold">
                                     {Math.round(WPM_MAX)}
                                 </Animated.Text>
-                                <Animated.Text style={fixedLabelStyle} className="absolute text-white text-xs font-bold">
+                                <Animated.Text style={fixedLabelStyle} className="absolute text-white text-[10px] font-bold">
                                     FAST
                                 </Animated.Text>
                             </View>
@@ -423,14 +426,14 @@ export default function Teleprompter() {
                 )}
 
                 {/* Mode Selector */}
-                <View className="flex-row justify-between bg-zinc-900 rounded-xl p-1 mb-4">
+                <View className={`flex-row justify-between bg-zinc-900 rounded-xl p-1 ${isLandscape ? "mb-1" : "mb-2"}`}>
                     {(['auto', 'fixed', 'wpm'] as const).map((mode) => (
                         <TouchableOpacity
                             key={mode}
                             onPress={() => setScrollMode(mode)}
-                            className={`flex-1 py-2 rounded-lg items-center ${scrollMode === mode ? 'bg-zinc-700' : ''}`}
+                            className={`flex-1 py-1.5 rounded-lg items-center ${scrollMode === mode ? 'bg-zinc-700' : ''}`}
                         >
-                            <Text className={`text-xs font-bold ${scrollMode === mode ? 'text-white' : 'text-zinc-500'}`}>
+                            <Text className={`text-[10px] font-bold ${scrollMode === mode ? 'text-white' : 'text-zinc-500'}`}>
                                 {mode === 'auto' ? 'Auto' : mode === 'fixed' ? 'Fixed' : 'WPM'}
                             </Text>
                         </TouchableOpacity>
@@ -443,28 +446,28 @@ export default function Teleprompter() {
                         {activeScript?.mode === 'phone' && (
                             <TouchableOpacity
                                 onPress={toggleRecording}
-                                className={`w-12 h-12 rounded-full border-4 items-center justify-center ${isRecording ? 'border-red-500' : 'border-white'}`}
+                                className={`w-10 h-10 rounded-full border-2 items-center justify-center ${isRecording ? 'border-red-500' : 'border-white'}`}
                             >
-                                <View className={`rounded-full ${isRecording ? 'w-4 h-4 bg-red-500 rounded-sm' : 'w-8 h-8 bg-red-500'}`} />
+                                <View className={`rounded-full ${isRecording ? 'w-3 h-3 bg-red-500 rounded-sm' : 'w-7 h-7 bg-red-500'}`} />
                             </TouchableOpacity>
                         )}
                     </View>
 
-                    <View className="flex-row items-center gap-8">
+                    <View className="flex-row items-center gap-6">
                         <TouchableOpacity onPress={handleRewind}>
-                            <Rewind color="white" size={32} fill="white" />
+                            <Rewind color="white" size={isLandscape ? 24 : 28} fill="white" />
                         </TouchableOpacity>
 
                         <TouchableOpacity onPress={() => setIsPlaying(!isPlaying)}>
                             {isPlaying ? (
-                                <Pause color="white" size={48} fill="white" />
+                                <Pause color="white" size={isLandscape ? 36 : 40} fill="white" />
                             ) : (
-                                <Play color="white" size={48} fill="white" />
+                                <Play color="white" size={isLandscape ? 36 : 40} fill="white" />
                             )}
                         </TouchableOpacity>
 
                         <TouchableOpacity onPress={handleForward}>
-                            <FastForward color="white" size={32} fill="white" />
+                            <FastForward color="white" size={isLandscape ? 24 : 28} fill="white" />
                         </TouchableOpacity>
                     </View>
 
@@ -472,7 +475,7 @@ export default function Teleprompter() {
                         onPress={() => router.navigate('/')}
                         className="bg-zinc-800 p-2 rounded-full"
                     >
-                        <Check color="white" size={24} />
+                        <Check color="white" size={isLandscape ? 20 : 24} />
                     </TouchableOpacity>
                 </View>
             </View>

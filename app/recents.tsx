@@ -1,4 +1,4 @@
-import { View, Text, TouchableOpacity, FlatList } from 'react-native';
+import { View, Text, TouchableOpacity, FlatList, useWindowDimensions } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import * as SQLite from 'expo-sqlite';
@@ -21,6 +21,8 @@ type Script = {
 
 export default function Recents() {
     const router = useRouter();
+    const { width, height } = useWindowDimensions();
+    const isLandscape = width > height;
     const setActiveScript = useScriptStore((state) => state.setActiveScript);
     const [scripts, setScripts] = useState<Script[]>([]);
 
@@ -51,7 +53,10 @@ export default function Recents() {
     };
 
     return (
-        <View className="flex-1 bg-black p-4">
+        <View
+            className="flex-1 bg-black p-4"
+            style={{ paddingHorizontal: isLandscape ? 60 : 24 }}
+        >
             {scripts.length === 0 ? (
                 <View className="flex-1 items-center justify-center">
                     <Text className="text-zinc-500 text-lg">No saved scripts found.</Text>

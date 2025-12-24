@@ -1,4 +1,4 @@
-import { View, Text, TouchableOpacity, ScrollView } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, useWindowDimensions } from 'react-native';
 import { Link, useRouter } from 'expo-router';
 import { useScriptStore } from '../store/useScriptStore';
 import { Plus, History } from 'lucide-react-native';
@@ -6,6 +6,8 @@ import { useEffect } from 'react';
 
 export default function Home() {
     const router = useRouter();
+    const { width, height } = useWindowDimensions();
+    const isLandscape = width > height;
     const { resetActiveScript, toastMessage, setToastMessage } = useScriptStore();
 
     useEffect(() => {
@@ -23,7 +25,10 @@ export default function Home() {
     };
 
     return (
-        <View className="flex-1 bg-black p-6 pt-24">
+        <View
+            className="flex-1 bg-black p-6 pt-24"
+            style={{ paddingHorizontal: isLandscape ? 60 : 24 }}
+        >
             {toastMessage && (
                 <View className="absolute bottom-24 left-6 right-6 bg-zinc-700 p-4 rounded-xl border border-zinc-700 shadow-lg z-50">
                     <Text className="text-white font-medium text-center">{toastMessage}</Text>

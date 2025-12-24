@@ -1,8 +1,7 @@
-import { View, Text, TouchableOpacity, ScrollView, Switch, Dimensions } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, Switch, Dimensions, useWindowDimensions } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useScriptStore } from '../store/useScriptStore';
 import { Monitor, Smartphone, Type, MoveHorizontal, Gauge } from 'lucide-react-native';
-import { breakText } from '../utils/textBreaker';
 
 import Slider from '@react-native-community/slider';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -64,7 +63,7 @@ const DraggableMarginPreview = ({ activeScript, updateSettings }: { activeScript
 
     const contentStyle = useAnimatedStyle(() => {
         return {
-            marginHorizontal: margin.value,
+            paddingHorizontal: margin.value,
             transform: [
                 { scaleX: activeScript.is_mirrored_h ? -1 : 1 },
                 { scaleY: activeScript.is_mirrored_v ? -1 : 1 }
@@ -72,32 +71,31 @@ const DraggableMarginPreview = ({ activeScript, updateSettings }: { activeScript
         };
     });
 
-    const screenWidth = Dimensions.get('window').width;
-    const fontSizePx = (activeScript.font_size || 3) * 8 + 10;
-    // Parent padding is 24 (p-6) * 2 = 48. Margin is applied to both sides.
-    const availableWidth = screenWidth - (activeScript.margin * 2);
-
-    const wrappedText = useMemo(() => {
-        const lines = breakText(activeScript?.content || "Your script content will appear here...", fontSizePx, availableWidth);
-        return lines.join('\n');
-    }, [activeScript?.content, fontSizePx, availableWidth]);
+    const fontSizePx = (activeScript.font_size || 3) * 8 + 16;
 
     if (!activeScript) return null;
 
     return (
-        <View className="h-64 bg-zinc-900 border border-zinc-800 mb-8 overflow-hidden relative rounded-xl">
+        <View className="h-64 bg-zinc-900 border border-zinc-800 mb-8 relative rounded-xl">
             <Text className="text-zinc-500 text-xs absolute top-2 left-0 right-0 text-center uppercase tracking-widest z-10">Preview (Drag Edges)</Text>
 
             <Animated.View
-                className="flex-1 justify-center items-center bg-black"
-                style={contentStyle}
+                className="flex-1 bg-black"
+                style={[contentStyle, { width: '100%' }]}
             >
-                <Text
-                    className="text-white font-bold text-center w-full"
-                    style={{ fontSize: fontSizePx }}
-                >
-                    {wrappedText}
-                </Text>
+                {/* Top spacer */}
+                <View style={{ height: 20 }} />
+
+                <View style={{ width: '100%' }}>
+                    <Text
+                        className="text-white font-bold text-center"
+                        style={{ fontSize: fontSizePx, backgroundColor: 'rgba(255,0,0,0.3)' }}
+
+                    >
+                        {activeScript?.content || "Your script content will appear here..."}
+                    </Text>
+                </View>
+
             </Animated.View>
 
             <Handle side="left" margin={margin} onDragEnd={updateStore} />
@@ -108,6 +106,8 @@ const DraggableMarginPreview = ({ activeScript, updateSettings }: { activeScript
 
 export default function Setup() {
     const router = useRouter();
+    const { width, height } = useWindowDimensions();
+    const isLandscape = width > height;
     const { activeScript, updateActiveScriptSettings } = useScriptStore();
 
     if (!activeScript) {
@@ -124,7 +124,10 @@ export default function Setup() {
     return (
         <GestureHandlerRootView style={{ flex: 1 }}>
             <ScrollView className="flex-1 bg-black">
-                <View className="p-6 pb-20">
+                <View
+                    className="p-6 pb-20"
+                    style={{ paddingHorizontal: isLandscape ? 60 : 24 }}
+                >
                     {/* Visual Preview with edge indicators */}
                     <DraggableMarginPreview activeScript={activeScript} updateSettings={updateActiveScriptSettings} />
 
