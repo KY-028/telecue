@@ -1,14 +1,14 @@
 {
   "expo": {
     "name": "TeleCue",
-    "slug": "TeleCue",
+    "slug": "telecue",
     "version": "1.0.0",
     "orientation": "default",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/telecue_logo.png",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/telecue_logo.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
@@ -17,11 +17,18 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/telecue_logo.png",
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.WRITE_SETTINGS"
+      ],
+      "package": "com.ky028sorganization.telecue"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -43,6 +50,13 @@
       ],
       "expo-screen-orientation",
       "expo-brightness"
-    ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "e16e6cca-0db0-401b-9cf4-396b4c582a3a"
+      }
+    },
+    "owner": "ky028s-organization"
   }
 }
