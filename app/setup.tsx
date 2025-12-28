@@ -89,7 +89,7 @@ const DraggableMarginPreview = ({ activeScript, updateSettings }: { activeScript
                 <View style={{ width: '100%' }}>
                     <Text
                         className="text-white font-bold text-center"
-                        style={{ fontSize: fontSizePx, backgroundColor: 'rgba(255,0,0,0.3)' }}
+                        style={{ fontSize: fontSizePx }}
 
                     >
                         {activeScript?.content || "Your script content will appear here..."}

@@ -17,6 +17,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { Play, Pause, FastForward, Rewind, Check, ChevronLeft, SwitchCamera } from 'lucide-react-native';
 import Slider from '@react-native-community/slider';
+import { useVoiceRecognition } from '../hooks/useVoiceRecognition';
 
 export default function Teleprompter() {
     // --- Hooks & Store ---
@@ -28,22 +29,117 @@ export default function Teleprompter() {
     const [micPermission, requestMicPermission] = useMicrophonePermissions();
     const [mediaPermission, requestMediaPermission] = MediaLibrary.usePermissions();
 
+    // --- Voice Recognition ---
+    const { start: startListening, stop: stopListening, transcript, isListening, isReady, error: voiceError } = useVoiceRecognition();
+
     // --- Playback & UI State ---
     const [isPlaying, setIsPlaying] = useState(false);
     const [isRecording, setIsRecording] = useState(false);
+    const [isCameraReady, setIsCameraReady] = useState(false);
     const [contentHeight, setContentHeight] = useState(0);
     const [containerHeight, setContainerHeight] = useState(Dimensions.get('window').height);
     const [scrollMode, setScrollMode] = useState<'auto' | 'fixed' | 'wpm'>('fixed');
     const [cameraFacing, setCameraFacing] = useState<'front' | 'back'>('front');
+
+    // Auto-Start Listening when in 'auto' mode
+    useEffect(() => {
+        if (scrollMode === 'auto') {
+            console.log("DEBUG: AI Mode Activated - Resetting Indices");
+            setMatchedIndex(-1);
+            lastMatchIndexRef.current = 0;
+            startListening();
+        } else {
+            stopListening();
+        }
+
+        return () => {
+            stopListening(); // Ensure socket closes on unmount
+        };
+    }, [scrollMode]);
+
+    // --- Alignment State ---
+    const [matchedIndex, setMatchedIndex] = useState(-1);
+    const lastMatchIndexRef = useRef(0);
+    const scriptWords = useRef<string[]>([]);
+
+    // Pre-calculate script words for faster matching
+    useEffect(() => {
+        if (activeScript?.content) {
+            scriptWords.current = activeScript.content.trim().split(/\s+/);
+            setMatchedIndex(-1);
+            lastMatchIndexRef.current = 0;
+        }
+    }, [activeScript?.content]);
+
+    // --- Phase 3: Inactivity Timeout ---
+    const silenceTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+    useEffect(() => {
+        if (scrollMode === 'auto') {
+            // Reset timer on every transcript update
+            if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+
+            silenceTimerRef.current = setTimeout(() => {
+                if (scrollMode === 'auto') {
+                    setScrollMode('fixed');
+                    Alert.alert(
+                        "Inactivity Detected",
+                        "We haven't heard you for a while, so we've switched back to Fixed scroll mode to save API costs."
+                    );
+                }
+            }, 10000);
+        } else {
+            if (silenceTimerRef.current) {
+                clearTimeout(silenceTimerRef.current);
+                silenceTimerRef.current = null;
+            }
+        }
+
+        return () => {
+            if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+        };
+    }, [transcript, scrollMode]);
+
+    // React to transcript updates
+    useEffect(() => {
+        if (scrollMode === 'auto' && transcript && scriptWords.current.length > 0) {
+            const { findBestMatchIndex } = require('../utils/textAlignment');
+            const matchIndex = findBestMatchIndex(scriptWords.current, transcript, lastMatchIndexRef.current);
+
+            // Guard against large jumps (more than 15 words) in the first 5 seconds of the session
+            // or if the match is too far from the current position initially.
+            const isInitialPhase = lastMatchIndexRef.current === 0;
+            if (isInitialPhase && matchIndex > 15) {
+                console.log("DEBUG: Ignoring excessive initial jump:", matchIndex);
+                return;
+            }
+
+            if (matchIndex !== lastMatchIndexRef.current && matchIndex >= lastMatchIndexRef.current) {
+                lastMatchIndexRef.current = matchIndex;
+                setMatchedIndex(matchIndex);
+
+                // Calculate scroll position
+                const progress = (matchIndex + 1) / scriptWords.current.length;
+                const targetY = -(progress * contentHeight);
+
+                scrollY.value = withTiming(targetY, {
+                    duration: 500, // Reduced from 1200ms for faster response
+                    easing: Easing.out(Easing.quad)
+                });
+            }
+        }
+    }, [transcript, scrollMode, contentHeight]);
+
+    useEffect(() => {
+        setIsCameraReady(false);
+    }, [cameraFacing, activeScript?.mode]);
+
     const [displayValue, setDisplayValue] = useState(() => {
-        return activeScript ? speedToNormalized(activeScript.speed || 1) : 50;
+        return activeScript ? speedToNormalized(activeScript.speed || 1) : 0.5;
     });
 
-    // --- Refs ---
-    const animRef = useRef(new RNAnimated.Value(displayValue)).current;
     const wasPlayingRef = useRef(false);
     const cameraRef = useRef<CameraView>(null);
-    const prevModeRef = useRef(scrollMode);
     const isRecordingRef = useRef(isRecording);
 
     // --- Animation Values ---
@@ -118,37 +214,12 @@ export default function Teleprompter() {
         }
     }, [isPlaying, activeScript?.speed, contentHeight, scrollMode]);
 
-    // Speed Sync Logic
+    // Speed Sync Logic (Simplified to avoid warnings)
     useEffect(() => {
         if (!activeScript) return;
         const target = speedToNormalized(activeScript.speed ?? 1);
-        const modeChanged = prevModeRef.current !== scrollMode;
-        prevModeRef.current = scrollMode;
-
-        if (modeChanged || Math.abs(target - displayValue) < 0.1) {
-            animRef.setValue(target);
-            setDisplayValue(target);
-            return;
-        }
-
-        const listenerId = animRef.addListener(({ value }) => {
-            setDisplayValue(value);
-        });
-
-        RNAnimated.timing(animRef, {
-            toValue: target,
-            duration: 220,
-            useNativeDriver: false,
-        }).start(() => {
-            animRef.removeListener(listenerId);
-            animRef.setValue(target);
-            setDisplayValue(target);
-        });
-
-        return () => {
-            try { animRef.removeListener(listenerId); } catch { }
-        };
-    }, [scrollMode, activeScript?.speed]);
+        setDisplayValue(target);
+    }, [activeScript?.speed]);
 
     // --- Animated Styles ---
     const wpmLabelStyle = useAnimatedStyle(() => ({
@@ -174,13 +245,22 @@ export default function Teleprompter() {
 
     // --- Handlers ---
     const handleBack = () => {
+        if (scrollMode === 'auto') {
+            setScrollMode('fixed');
+        }
+
         if (isRecording) {
             Alert.alert(
                 'Stop Recording?',
                 'Going back will stop and save your current recording.',
                 [
                     { text: 'Cancel', style: 'cancel' },
-                    { text: 'Stop & Go Back', style: 'destructive', onPress: () => router.back() }
+                    {
+                        text: 'Stop & Go Back', style: 'destructive', onPress: () => {
+                            setIsRecording(false);
+                            router.back();
+                        }
+                    }
                 ]
             );
         } else {
@@ -189,21 +269,48 @@ export default function Teleprompter() {
     };
 
     const handleRewind = () => {
+        if (scrollMode !== 'auto') {
+            setScrollMode('fixed');
+        } else {
+            // In AI mode, we reset tracking so it picks up from the start again
+            console.log("DEBUG: AI Rewind - Resetting Indices");
+            setMatchedIndex(-1);
+            lastMatchIndexRef.current = 0;
+        }
         setIsPlaying(false);
         scrollY.value = withTiming(0, { duration: 500 });
     };
 
     const handleForward = () => {
+        if (scrollMode !== 'auto') {
+            setScrollMode('fixed');
+        } else {
+            // In AI mode, we move tracking to the end
+            console.log("DEBUG: AI Forward - Resetting Indices to End");
+            const finalIndex = scriptWords.current.length - 1;
+            setMatchedIndex(finalIndex);
+            lastMatchIndexRef.current = finalIndex;
+        }
         setIsPlaying(false);
         scrollY.value = -contentHeight;
     };
 
+    const handleDone = () => {
+        if (scrollMode === 'auto') {
+            setScrollMode('fixed');
+        }
+        router.navigate('/');
+    };
+
     const handleRequestPermission = async () => {
-        const response = await requestPermission();
-        if (!response.granted && !response.canAskAgain) {
+        const camResponse = await requestPermission();
+        const micResponse = await requestMicPermission();
+
+        if ((!camResponse.granted && !camResponse.canAskAgain) ||
+            (!micResponse.granted && !micResponse.canAskAgain)) {
             Alert.alert(
-                'Permission Required',
-                'Camera permission is required for Phone Recording mode. Please enable it in settings.',
+                'Permissions Required',
+                'Camera and microphone permissions are required for Phone Recording mode. Please enable them in settings.',
                 [
                     { text: 'Cancel', style: 'cancel' },
                     { text: 'Open Settings', onPress: () => Linking.openSettings() }
@@ -215,7 +322,19 @@ export default function Teleprompter() {
     const toggleRecording = async () => {
         if (isRecording) {
             setIsRecording(false);
-            cameraRef.current?.stopRecording();
+            if (scrollMode === 'auto') {
+                setScrollMode('fixed');
+            }
+            try {
+                await cameraRef.current?.stopRecording();
+            } catch (e) {
+                console.error("Stop recording error:", e);
+            }
+            return;
+        }
+
+        if (!isCameraReady) {
+            Alert.alert('Error', 'Camera is not ready yet.');
             return;
         }
 
@@ -232,6 +351,8 @@ export default function Teleprompter() {
                 }
                 return;
             }
+            // Give a small delay for the camera to adjust to new permission
+            await new Promise(resolve => setTimeout(resolve, 500));
         }
         if (!mediaPermission?.granted) {
             const mediaResponse = await requestMediaPermission();
@@ -256,7 +377,7 @@ export default function Teleprompter() {
                 Alert.alert('Saved', 'Video saved to your gallery!');
             }
         } catch (error) {
-            console.error(error);
+            console.error("Recording error:", error);
             Alert.alert('Error', 'Failed to record video.');
             setIsRecording(false);
         }
@@ -274,13 +395,13 @@ export default function Teleprompter() {
         );
     }
 
-    if (!permission) return <View className="bg-black flex-1" />;
-    if (!permission.granted && activeScript?.mode === 'phone') {
+    if (!permission || !micPermission) return <View className="bg-black flex-1" />;
+    if ((!permission.granted || !micPermission.granted) && activeScript?.mode === 'phone') {
         return (
             <View className="flex-1 bg-black items-center justify-center p-6">
-                <Text className="text-white text-center mb-6 text-lg">We need your permission to show the camera for Phone Recording mode.</Text>
+                <Text className="text-white text-center mb-6 text-lg">We need your permission to show the camera and microphone for Phone Recording mode.</Text>
                 <TouchableOpacity className="bg-blue-600 p-4 rounded-xl" onPress={handleRequestPermission}>
-                    <Text className="text-white font-bold">Grant Permission</Text>
+                    <Text className="text-white font-bold">Grant Permissions</Text>
                 </TouchableOpacity>
             </View>
         );
@@ -298,11 +419,17 @@ export default function Teleprompter() {
                     style={StyleSheet.absoluteFill}
                     facing={cameraFacing}
                     mode="video"
+                    mute={false}
+                    onCameraReady={() => setIsCameraReady(true)}
+                    onMountError={(error) => {
+                        console.error("Camera mount error:", error);
+                        Alert.alert("Camera Error", "Failed to initialize camera.");
+                    }}
                 />
             )}
 
             {/* Top Left Back Button */}
-            <View className={`absolute ${isLandscape ? "top-6 left-10" : "top-12 left-6"} z-50 flex-row gap-4`}>
+            <View className={`absolute ${isLandscape ? "top-6 left-10" : "top-20 left-6"} z-50 flex-row gap-4`}>
                 <TouchableOpacity
                     className={`bg-black/60 ${isLandscape ? "p-2 px-3" : "p-3 px-5"} rounded-full border border-white/20 blur-md flex-row items-center gap-2`}
                     onPress={handleBack}
@@ -311,6 +438,14 @@ export default function Teleprompter() {
                     <Text className="text-white font-bold">Back</Text>
                 </TouchableOpacity>
             </View>
+
+            {/* Debug Transcript Overlay (Temporary for Phase 2) */}
+            {isListening && (
+                <View className="absolute top-24 left-6 right-6 bg-black/50 p-2 rounded z-40 pointer-events-none">
+                    <Text className="text-yellow-400 text-xs font-mono">Listening: {transcript}</Text>
+                    {voiceError && <Text className="text-red-500 text-xs">Error: {voiceError.message}</Text>}
+                </View>
+            )}
 
             {/* Script Container */}
             <View className="absolute inset-x-0 top-0 bottom-0">
@@ -341,7 +476,18 @@ export default function Teleprompter() {
                                 className="text-white font-bold text-center"
                                 style={{ fontSize: (activeScript?.font_size || 3) * 8 + 16 }}
                             >
-                                {activeScript?.content || "No script content provided."}
+                                {scriptWords.current.length > 0 ? (
+                                    scriptWords.current.map((word, i) => (
+                                        <Text
+                                            key={i}
+                                            style={{ color: i <= matchedIndex ? '#4ade80' : 'white' }}
+                                        >
+                                            {word}{' '}
+                                        </Text>
+                                    ))
+                                ) : (
+                                    activeScript?.content || "No script content provided."
+                                )}
                             </Text>
                         </View>
 
@@ -434,7 +580,7 @@ export default function Teleprompter() {
                             className={`flex-1 py-1.5 rounded-lg items-center ${scrollMode === mode ? 'bg-zinc-700' : ''}`}
                         >
                             <Text className={`text-[10px] font-bold ${scrollMode === mode ? 'text-white' : 'text-zinc-500'}`}>
-                                {mode === 'auto' ? 'Auto' : mode === 'fixed' ? 'Fixed' : 'WPM'}
+                                {mode === 'auto' ? 'Auto (AI)' : mode === 'fixed' ? 'Fixed' : 'WPM'}
                             </Text>
                         </TouchableOpacity>
                     ))}
@@ -458,13 +604,21 @@ export default function Teleprompter() {
                             <Rewind color="white" size={isLandscape ? 24 : 28} fill="white" />
                         </TouchableOpacity>
 
-                        <TouchableOpacity onPress={() => setIsPlaying(!isPlaying)}>
-                            {isPlaying ? (
-                                <Pause color="white" size={isLandscape ? 36 : 40} fill="white" />
-                            ) : (
-                                <Play color="white" size={isLandscape ? 36 : 40} fill="white" />
-                            )}
-                        </TouchableOpacity>
+                        {scrollMode !== 'auto' ? (
+                            <TouchableOpacity onPress={() => setIsPlaying(!isPlaying)}>
+                                {isPlaying ? (
+                                    <Pause color="white" size={isLandscape ? 36 : 40} fill="white" />
+                                ) : (
+                                    <Play color="white" size={isLandscape ? 36 : 40} fill="white" />
+                                )}
+                            </TouchableOpacity>
+                        ) : (
+                            <View className="items-center justify-center px-2">
+                                <Text className={`text-orange-400 font-bold text-[10px] text-center ${!isReady ? 'opacity-50' : ''}`}>
+                                    {isReady ? "AI SCROLLING\nACTIVE" : "AI SCROLLING\nLOADING..."}
+                                </Text>
+                            </View>
+                        )}
 
                         <TouchableOpacity onPress={handleForward}>
                             <FastForward color="white" size={isLandscape ? 24 : 28} fill="white" />
@@ -472,7 +626,7 @@ export default function Teleprompter() {
                     </View>
 
                     <TouchableOpacity
-                        onPress={() => router.navigate('/')}
+                        onPress={handleDone}
                         className="bg-zinc-800 p-2 rounded-full"
                     >
                         <Check color="white" size={isLandscape ? 20 : 24} />

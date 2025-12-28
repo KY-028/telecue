@@ -13,7 +13,8 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.ky028sorganization.telecue"
     },
     "android": {
       "adaptiveIcon": {
@@ -40,12 +41,6 @@
         "expo-camera",
         {
           "cameraPermission": "Allow TeleCue to access your camera for phone recording mode."
-        }
-      ],
-      [
-        "expo-av",
-        {
-          "microphonePermission": "Allow TeleCue to access your microphone for recording audio."
         }
       ],
       "expo-screen-orientation",
