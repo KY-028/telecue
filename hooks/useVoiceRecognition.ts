@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { AppState, AppStateStatus } from 'react-native';
 import { AssemblyAIProvider } from '../services/transcription/AssemblyAIProvider';
 import { ITranscriptionService } from '../services/transcription/types';
 
@@ -11,6 +12,7 @@ export function useVoiceRecognition() {
     const [isListening, setIsListening] = useState(false);
     const [isReady, setIsReady] = useState(false);
     const [error, setError] = useState<Error | null>(null);
+    const [isCallActive, setIsCallActive] = useState(false);
     const providerRef = useRef<ITranscriptionService>(providerInstance);
 
     useEffect(() => {
@@ -37,13 +39,27 @@ export function useVoiceRecognition() {
 
         providerRef.current.onError((err) => {
             console.error("Transcription Error:", err);
+            // Check if error is related to audio session (often happens during calls)
+            if (err.message?.includes("recording") || err.message?.includes("audio") || err.message?.includes("Seems like you're in another call")) {
+                setIsCallActive(true);
+            }
             setError(err);
             setIsListening(false);
             setIsReady(false);
         });
 
+        const handleAppStateChange = (nextAppState: AppStateStatus) => {
+            if (nextAppState === 'inactive' || nextAppState === 'background') {
+                console.log("DEBUG: App State Interruption detected:", nextAppState);
+                // We don't necessarily set isCallActive true immediately for background, 
+                // but we might want to flag it if we were listening
+            }
+        };
+
+        const appStateSubscription = AppState.addEventListener('change', handleAppStateChange);
+
         return () => {
-            // generic cleanup if needed
+            appStateSubscription.remove();
         };
     }, []);
 
@@ -51,13 +67,18 @@ export function useVoiceRecognition() {
         setError(null);
         setTranscript(''); // Clear previous session text
         setIsReady(false);
+        setIsCallActive(false); // Reset call active state on new attempt
         try {
             await providerRef.current.start();
             setIsListening(true);
-        } catch (e) {
+        } catch (e: any) {
             setError(e as Error);
             setIsListening(false);
             setIsReady(false);
+            // Also check for call-related errors here
+            if (e.message?.includes("call") || e.message?.includes("recording") || e.message?.includes("audio")) {
+                setIsCallActive(true);
+            }
         }
     }, []);
 
@@ -76,6 +97,7 @@ export function useVoiceRecognition() {
         isListening,
         isReady,
         error,
+        isCallActive,
         start,
         stop
     };

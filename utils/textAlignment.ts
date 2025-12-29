@@ -39,7 +39,8 @@ export function findBestMatchIndex(
 
     for (let i = startIndex; i < endIndex - searchWindow.length + 1; i++) {
         const scriptSlice = scriptWords.slice(i, i + searchWindow.length).join(' ');
-        const similarity = compareStrings(searchString, scriptSlice);
+        const normalizedScriptSlice = normalizeText(scriptSlice);
+        const similarity = compareStrings(searchString, normalizedScriptSlice);
 
         // Recency Bias: tie-break by preferring the match that is further along in the script
         if (similarity >= threshold && similarity >= maxSimilarity) {

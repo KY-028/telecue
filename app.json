@@ -38,9 +38,11 @@
       "expo-router",
       "expo-sqlite",
       [
-        "expo-camera",
+        "react-native-vision-camera",
         {
-          "cameraPermission": "Allow TeleCue to access your camera for phone recording mode."
+          "cameraPermissionText": "$(PRODUCT_NAME) needs access to your Camera.",
+          "microphonePermissionText": "$(PRODUCT_NAME) needs access to your Microphone.",
+          "enableMicrophonePermission": true
         }
       ],
       "expo-screen-orientation",

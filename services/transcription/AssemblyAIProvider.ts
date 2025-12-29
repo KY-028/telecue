@@ -39,7 +39,7 @@ export class AssemblyAIProvider implements ITranscriptionService {
 
     async start(): Promise<void> {
         if (this.state !== 'IDLE' && this.state !== 'ERROR') {
-            console.log(`[AssemblyAI] Already in state: ${this.state}`);
+
             return;
         }
 
@@ -137,9 +137,20 @@ export class AssemblyAIProvider implements ITranscriptionService {
         try {
             await ExpoAudioStreamModule.startRecording(config);
             console.log("[AssemblyAI] Native Recording Started");
-        } catch (e) {
+        } catch (e: any) {
             console.error("[AssemblyAI] Failed to start native recording", e);
+            const message = e.message || String(e);
+            if (message.toLowerCase().includes("in use") || message.toLowerCase().includes("interrupted") || message.toLowerCase().includes("audio session") || message.toLowerCase().includes("already recording")) {
+                throw new Error("Seems like you're in another call! Mode unavailable during calls.");
+            }
             throw e;
+        }
+    }
+
+    // New method to accept external audio chunks (e.g. from Vision Camera Frame Processor)
+    public sendAudioChunk(base64Data: string) {
+        if (this.socket?.readyState === WebSocket.OPEN && this.sessionStarted && this.state === 'RECORDING') {
+            this.sendAudio(base64Data);
         }
     }
 
@@ -154,7 +165,6 @@ export class AssemblyAIProvider implements ITranscriptionService {
                 this.onReadyCallback?.();
             } else if (type === 'Turn' || type === 'Partial') {
                 if (res.transcript) {
-                    // console.log(`[AssemblyAI] ${type}:`, res.transcript);
                     this.onTranscriptCallback?.(res.transcript);
                 }
             } else if (type === 'Error' || res.error) {
@@ -198,7 +208,6 @@ export class AssemblyAIProvider implements ITranscriptionService {
     async stop(): Promise<void> {
         if (this.state === 'STOPPING' || this.state === 'IDLE') return;
 
-        console.log("[AssemblyAI] Stopping...");
         this.state = 'STOPPING';
         this.shouldReconnect = false;
         this.sessionStarted = false;
@@ -222,7 +231,6 @@ export class AssemblyAIProvider implements ITranscriptionService {
         console.log("[AssemblyAI] Internal cleanup started...");
         try {
             await ExpoAudioStreamModule.stopRecording();
-            console.log("[AssemblyAI] Native recording stopped");
         } catch (e) {
             // Silence common expected errors
             const msg = (e as Error).message || "";
