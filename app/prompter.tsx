@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { View, Text, TouchableOpacity, Dimensions, ScrollView, StyleSheet, Alert, Animated as RNAnimated, Linking, useWindowDimensions } from 'react-native';
+import { View, Text, TouchableOpacity, Dimensions, ScrollView, StyleSheet, Alert, Animated as RNAnimated, Linking, useWindowDimensions, TextInput } from 'react-native';
 import { GestureDetector, Gesture, GestureHandlerRootView } from 'react-native-gesture-handler';
 import { CameraView, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
 import { useRouter } from 'expo-router';
@@ -16,7 +16,7 @@ import Animated, {
     Easing,
     cancelAnimation,
 } from 'react-native-reanimated';
-import { Play, Pause, FastForward, Rewind, Check, ChevronLeft, SwitchCamera } from 'lucide-react-native';
+import { Play, Pause, FastForward, Rewind, Check, ChevronLeft, SwitchCamera, Search, X, ChevronUp, ChevronDown } from 'lucide-react-native';
 import Slider from '@react-native-community/slider';
 import { useVoiceRecognition } from '../hooks/useVoiceRecognition';
 
@@ -41,6 +41,12 @@ export default function Teleprompter() {
     const [containerHeight, setContainerHeight] = useState(Dimensions.get('window').height);
     const [scrollMode, setScrollMode] = useState<'auto' | 'fixed' | 'wpm'>('fixed');
     const [cameraFacing, setCameraFacing] = useState<'front' | 'back'>('front');
+
+    // --- Search State ---
+    const [isSearchActive, setIsSearchActive] = useState(false);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [allMatches, setAllMatches] = useState<{ wordIndex: number; start: number; length: number }[]>([]);
+    const [matchCursor, setMatchCursor] = useState(0);
 
     // Auto-Start Listening when in 'auto' mode
     useEffect(() => {
@@ -271,6 +277,76 @@ export default function Teleprompter() {
             { scaleY: activeScript?.is_mirrored_v ? -1 : 1 },
         ],
     }));
+
+    const searchInputRef = useRef<any>(null);
+
+    const handleSearch = (text: string) => {
+        setSearchQuery(text);
+        if (!text.trim() || text.length < 2) {
+            setAllMatches([]);
+            setMatchCursor(0);
+            return;
+        }
+
+        const lowerQuery = text.toLowerCase();
+        const matches: { wordIndex: number; start: number; length: number }[] = [];
+
+        scriptWords.current.forEach((word, wordIndex) => {
+            const lowerWord = word.toLowerCase();
+            let start = lowerWord.indexOf(lowerQuery);
+            while (start !== -1) {
+                matches.push({ wordIndex, start, length: text.length });
+                start = lowerWord.indexOf(lowerQuery, start + 1);
+            }
+        });
+
+        setAllMatches(matches);
+        setMatchCursor(0);
+
+        if (matches.length > 0) {
+            jumpToMatch(matches[0]);
+        }
+    };
+
+    const jumpToMatch = (match: { wordIndex: number; start: number; length: number }) => {
+        const progress = match.wordIndex / scriptWords.current.length;
+        const targetY = -(progress * contentHeight);
+
+        if (scrollMode === 'auto') {
+            lastMatchIndexRef.current = match.wordIndex;
+        }
+
+        scrollY.value = withTiming(targetY, {
+            duration: 500,
+            easing: Easing.out(Easing.quad)
+        });
+    };
+
+    const handleNextMatch = () => {
+        if (allMatches.length === 0) return;
+        const next = (matchCursor + 1) % allMatches.length;
+        setMatchCursor(next);
+        jumpToMatch(allMatches[next]);
+    };
+
+    const handlePrevMatch = () => {
+        if (allMatches.length === 0) return;
+        const prev = (matchCursor - 1 + allMatches.length) % allMatches.length;
+        setMatchCursor(prev);
+        jumpToMatch(allMatches[prev]);
+    };
+
+    const toggleSearch = () => {
+        if (isSearchActive) {
+            setIsSearchActive(false);
+            setSearchQuery('');
+            setAllMatches([]);
+            setMatchCursor(0);
+        } else {
+            setIsSearchActive(true);
+            setTimeout(() => searchInputRef.current?.focus(), 100);
+        }
+    };
 
     // --- Gesture Logic ---
     const panGesture = Gesture.Pan()
@@ -508,6 +584,50 @@ export default function Teleprompter() {
                     </TouchableOpacity>
                 </View>
 
+                {/* Top Right Search Button */}
+                <View className={`absolute ${isLandscape ? "top-6 right-10" : "top-20 right-6"} z-50 flex-row gap-4`}>
+                    {isSearchActive ? (
+                        <View className="flex-row items-center bg-black/60 border border-white/20 px-4 h-12 rounded-full blur-md shadow-2xl min-w-[220px]">
+                            <View className="flex-1 flex-row items-center h-full">
+                                <TextInput
+                                    ref={searchInputRef}
+                                    style={{ color: 'white', fontSize: 15, flex: 1, paddingVertical: 0 }}
+                                    placeholder="Search"
+                                    placeholderTextColor="rgba(255,255,255,0.4)"
+                                    value={searchQuery}
+                                    onChangeText={handleSearch}
+                                    autoCapitalize="none"
+                                />
+                                {searchQuery.length > 0 && (
+                                    <Text className="text-[11px] text-white/50 font-medium mr-2">
+                                        {allMatches.length > 0 ? `${matchCursor + 1}/${allMatches.length}` : '0/0'}
+                                    </Text>
+                                )}
+                            </View>
+
+                            <View className="flex-row items-center gap-2 pr-1">
+                                <TouchableOpacity onPress={handlePrevMatch} className="active:opacity-50">
+                                    <ChevronUp color={allMatches.length > 0 ? "white" : "rgba(255,255,255,0.2)"} size={20} />
+                                </TouchableOpacity>
+                                <TouchableOpacity onPress={handleNextMatch} className="active:opacity-50">
+                                    <ChevronDown color={allMatches.length > 0 ? "white" : "rgba(255,255,255,0.2)"} size={20} />
+                                </TouchableOpacity>
+                                {/* <View className="w-[1px] h-4 bg-white/20 mx-1" /> */}
+                                <TouchableOpacity onPress={toggleSearch} className="active:opacity-50">
+                                    <X color="white" size={20} />
+                                </TouchableOpacity>
+                            </View>
+                        </View>
+                    ) : (
+                        <TouchableOpacity
+                            className={`bg-black/60 ${isLandscape ? "p-3" : "p-4"} rounded-full border border-white/20 blur-md items-center justify-center`}
+                            onPress={toggleSearch}
+                        >
+                            <Search color="white" size={20} />
+                        </TouchableOpacity>
+                    )}
+                </View>
+
                 {/* Debug Transcript Overlay (Temporary for Phase 2) */}
                 {isListening && (
                     <View className="absolute top-24 left-6 right-6 bg-black/50 p-2 rounded z-40 pointer-events-none">
@@ -546,18 +666,57 @@ export default function Teleprompter() {
                                         className="text-white font-bold text-center"
                                         style={{ fontSize: (activeScript?.font_size || 3) * 8 + 16 }}
                                     >
-                                        {scriptWords.current.length > 0 ? (
-                                            scriptWords.current.map((word, i) => (
-                                                <Text
-                                                    key={i}
-                                                    style={{ color: i <= matchedIndex ? '#4ade80' : 'white' }}
-                                                >
-                                                    {word}{' '}
-                                                </Text>
-                                            ))
-                                        ) : (
-                                            activeScript?.content || "No script content provided."
-                                        )}
+                                        {(() => {
+                                            if (scriptWords.current.length === 0) {
+                                                return activeScript?.content || "No script content provided.";
+                                            }
+
+                                            let matchCounter = 0;
+                                            return scriptWords.current.map((word, wordIdx) => {
+                                                const isMatchedByAI = wordIdx <= matchedIndex;
+
+                                                if (searchQuery && word.toLowerCase().includes(searchQuery.toLowerCase())) {
+                                                    const parts = word.split(new RegExp(`(${searchQuery})`, 'gi'));
+                                                    return (
+                                                        <Text key={wordIdx}>
+                                                            {parts.map((part, partIdx) => {
+                                                                const isQuery = part.toLowerCase() === searchQuery.toLowerCase();
+                                                                let isActiveMatch = false;
+                                                                if (isQuery) {
+                                                                    if (matchCounter === matchCursor) {
+                                                                        isActiveMatch = true;
+                                                                    }
+                                                                    matchCounter++;
+                                                                }
+
+                                                                return (
+                                                                    <Text
+                                                                        key={partIdx}
+                                                                        style={{
+                                                                            color: isMatchedByAI ? '#4ade80' : 'white',
+                                                                            backgroundColor: isQuery ? '#f97316' : 'transparent',
+                                                                            opacity: isQuery && !isActiveMatch ? 0.75 : 1
+                                                                        }}
+                                                                    >
+                                                                        {part}
+                                                                    </Text>
+                                                                );
+                                                            })}
+                                                            <Text>{' '}</Text>
+                                                        </Text>
+                                                    );
+                                                }
+
+                                                return (
+                                                    <Text
+                                                        key={wordIdx}
+                                                        style={{ color: isMatchedByAI ? '#4ade80' : 'white' }}
+                                                    >
+                                                        {word}{' '}
+                                                    </Text>
+                                                );
+                                            });
+                                        })()}
                                     </Text>
                                 </View>
 
