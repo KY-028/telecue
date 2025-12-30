@@ -6,7 +6,6 @@ import { useCameraDevice, useCameraPermission, useMicrophonePermission, Camera }
 import { useScriptStore } from '../store/useScriptStore';
 import { WPM_MIN, WPM_MAX } from '../constants/prompter';
 import { speedToWpm, speedToNormalized, normalizedToSpeed } from '../utils/speed';
-import * as ScreenOrientation from 'expo-screen-orientation';
 import * as Brightness from 'expo-brightness';
 import * as MediaLibrary from 'expo-media-library';
 import Animated, {
@@ -20,6 +19,7 @@ import { Play, Pause, FastForward, Rewind, Check, ChevronLeft, SwitchCamera, Sea
 import Slider from '@react-native-community/slider';
 import { useVoiceRecognition } from '../hooks/useVoiceRecognition';
 import { setAudioModeAsync } from 'expo-audio';
+import { parseHtmlToStyledWords, StyledWord } from '../utils/htmlParser';
 
 
 export default function Teleprompter() {
@@ -79,18 +79,18 @@ export default function Teleprompter() {
     // --- Alignment State ---
     const [matchedIndex, setMatchedIndex] = useState(-1);
     const lastMatchIndexRef = useRef(0);
-    const [scriptWords, setScriptWords] = useState<string[]>([]);
+    const [scriptWords, setScriptWords] = useState<StyledWord[]>([]);
     const [sectionStartIndices, setSectionStartIndices] = useState<number[]>([]);
 
     // Pre-calculate script words and section boundaries
     useEffect(() => {
-        if (activeScript?.content) {
-            const rawContent = activeScript.content.trim();
-            // Split by any whitespace but preserve newline info for sectioning
-            const words = rawContent.split(/\s+/);
-            setScriptWords(words);
+        const contentToParse = activeScript?.html_content || activeScript?.content;
+        if (contentToParse) {
+            const parsedWords = parseHtmlToStyledWords(contentToParse);
+            setScriptWords(parsedWords);
 
-            // Sections are defined by double newlines (\n\n)
+            // Legacy section logic (using plain text approximation for now)
+            const rawContent = (activeScript?.plain_text || contentToParse || '').replace(/<[^>]*>/g, '').trim();
             const lines = rawContent.split('\n');
             const starts: number[] = [0];
             let currentWordTotal = 0;
@@ -110,7 +110,7 @@ export default function Teleprompter() {
             setMatchedIndex(-1);
             lastMatchIndexRef.current = 0;
         }
-    }, [activeScript?.content]);
+    }, [activeScript?.html_content, activeScript?.content]);
 
     // --- Phase 3: Inactivity Timeout ---
     const silenceTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -156,7 +156,9 @@ export default function Teleprompter() {
     useEffect(() => {
         if (scrollMode === 'auto' && transcript && scriptWords.length > 0) {
             const { findBestMatchIndex } = require('../utils/textAlignment');
-            const matchIndex = findBestMatchIndex(scriptWords, transcript, lastMatchIndexRef.current);
+            // Extract plain text words for matching
+            const wordList = scriptWords.map((w: any) => w.word);
+            const matchIndex = findBestMatchIndex(wordList, transcript, lastMatchIndexRef.current);
 
             // Guard against large jumps (more than 15 words) in the first 5 seconds of the session
             // or if the match is too far from the current position initially.
@@ -337,7 +339,8 @@ export default function Teleprompter() {
         const lowerQuery = text.toLowerCase();
         const matches: { wordIndex: number; start: number; length: number }[] = [];
 
-        scriptWords.forEach((word, wordIndex) => {
+        scriptWords.forEach((styledWord: any, wordIndex) => {
+            const word = styledWord.word;
             const lowerWord = word.toLowerCase();
             let start = lowerWord.indexOf(lowerQuery);
             while (start !== -1) {
@@ -719,18 +722,20 @@ export default function Teleprompter() {
                                     >
                                         {(() => {
                                             if (scriptWords.length === 0) {
-                                                return activeScript?.content || "No script content provided.";
+                                                return activeScript?.plain_text || activeScript?.content || "No script content provided.";
                                             }
 
                                             let matchCounter = 0;
-                                            return scriptWords.map((word, wordIdx) => {
+                                            return scriptWords.map((styledWord: any, wordIdx) => {
+                                                const word = styledWord.word;
+                                                const baseStyle = styledWord.style;
                                                 const isMatchedByAI = wordIdx <= matchedIndex;
 
                                                 if (searchQuery && word.toLowerCase().includes(searchQuery.toLowerCase())) {
                                                     const parts = word.split(new RegExp(`(${searchQuery})`, 'gi'));
                                                     return (
                                                         <Text key={wordIdx}>
-                                                            {parts.map((part, partIdx) => {
+                                                            {parts.map((part: string, partIdx: number) => {
                                                                 const isQuery = part.toLowerCase() === searchQuery.toLowerCase();
                                                                 let isActiveMatch = false;
                                                                 if (isQuery) {
@@ -743,11 +748,14 @@ export default function Teleprompter() {
                                                                 return (
                                                                     <Text
                                                                         key={partIdx}
-                                                                        style={{
-                                                                            color: isMatchedByAI ? '#4ade80' : 'white',
-                                                                            backgroundColor: isQuery ? '#f97316' : 'transparent',
-                                                                            opacity: isQuery && !isActiveMatch ? 0.75 : 1
-                                                                        }}
+                                                                        style={[
+                                                                            baseStyle,
+                                                                            {
+                                                                                color: isMatchedByAI ? '#4ade80' : (baseStyle.color || 'white'),
+                                                                                backgroundColor: isQuery ? '#f97316' : 'transparent',
+                                                                                opacity: isQuery && !isActiveMatch ? 0.75 : 1
+                                                                            }
+                                                                        ]}
                                                                     >
                                                                         {part}
                                                                     </Text>
@@ -761,7 +769,10 @@ export default function Teleprompter() {
                                                 return (
                                                     <Text
                                                         key={wordIdx}
-                                                        style={{ color: isMatchedByAI ? '#4ade80' : 'white' }}
+                                                        style={[
+                                                            baseStyle,
+                                                            { color: isMatchedByAI ? '#4ade80' : (baseStyle.color || 'white') }
+                                                        ]}
                                                     >
                                                         {word}{' '}
                                                     </Text>
@@ -858,7 +869,7 @@ export default function Teleprompter() {
                             <TouchableOpacity
                                 key={mode}
                                 onPress={() => setScrollMode(mode)}
-                                className={`flex-1 py-1.5 rounded-lg items-center ${scrollMode === mode ? 'bg-zinc-700' : ''}`}
+                                className={`flex-1 py-1.5 rounded-lg items-center ${scrollMode === mode ? 'bg-zinc-700 shadow-sm' : ''}`}
                             >
                                 <Text className={`text-[10px] font-bold ${scrollMode === mode ? 'text-white' : 'text-zinc-500'}`}>
                                     {mode === 'auto' ? 'Auto (AI)' : mode === 'fixed' ? 'Fixed' : 'WPM'}

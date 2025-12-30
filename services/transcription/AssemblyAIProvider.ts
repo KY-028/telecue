@@ -1,6 +1,6 @@
 import { ExpoAudioStreamModule } from '@siteed/expo-audio-studio';
 import { ITranscriptionService } from './types';
-import { LegacyEventEmitter } from 'expo-modules-core';
+
 
 const SAMPLE_RATE = 16000;
 const RECONNECT_DELAY = 1000;
@@ -15,7 +15,7 @@ interface AAIResponse {
     error?: string;
 }
 
-const emitter = new LegacyEventEmitter(ExpoAudioStreamModule);
+const emitter = ExpoAudioStreamModule;
 
 export class AssemblyAIProvider implements ITranscriptionService {
     private socket: WebSocket | null = null;

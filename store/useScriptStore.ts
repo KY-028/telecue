@@ -4,6 +4,8 @@ export interface Script {
     id?: number;
     title: string;
     content: string;
+    plain_text?: string;
+    html_content?: string;
     font_family: string;
     font_size: number;
     margin: number;

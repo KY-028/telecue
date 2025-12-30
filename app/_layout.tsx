@@ -1,15 +1,20 @@
 import { useEffect } from 'react';
+import { useColorScheme } from 'react-native';
 import { Stack } from 'expo-router';
+import { ThemeProvider, DarkTheme, DefaultTheme } from '@react-navigation/native';
 import { initDatabase } from '../db/schema';
 import '../global.css';
 import { StatusBar } from 'expo-status-bar';
 import * as ScreenOrientation from 'expo-screen-orientation';
 
 export default function RootLayout() {
+    const colorScheme = useColorScheme();
+    const isDarkMode = colorScheme === 'dark';
+
     // Load Database & Orientation
     useEffect(() => {
         initDatabase().catch(err => console.error("Database init error:", err));
-        
+
         const unlockOrientation = async () => {
             await ScreenOrientation.unlockAsync();
         };
@@ -17,14 +22,14 @@ export default function RootLayout() {
     }, []);
 
     return (
-        <>
-            <StatusBar style="light" hidden={false} />
+        <ThemeProvider value={isDarkMode ? DarkTheme : DefaultTheme}>
+            <StatusBar style={isDarkMode ? 'light' : 'dark'} hidden={false} />
             <Stack
                 screenOptions={{
                     headerStyle: {
-                        backgroundColor: '#000',
+                        backgroundColor: isDarkMode ? '#000' : '#fff',
                     },
-                    headerTintColor: '#fff',
+                    headerTintColor: isDarkMode ? '#fff' : '#000',
                     headerTitleStyle: {
                         fontWeight: 'bold',
                     },
@@ -36,6 +41,6 @@ export default function RootLayout() {
                 <Stack.Screen name="recents" options={{ title: 'Recent Scripts' }} />
                 <Stack.Screen name="prompter" options={{ headerShown: false }} />
             </Stack>
-        </>
+        </ThemeProvider>
     );
 }
