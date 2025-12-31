@@ -1,27 +1,37 @@
 import { TextStyle } from 'react-native';
 
+export interface StyledSegment {
+    text: string;           // The exact text (preserving all spacing)
+    style: TextStyle;
+    startIndex: number;     // Start index in the plain text
+    endIndex: number;       // End index in the plain text (exclusive)
+}
+
+// Legacy interface for backward compatibility with AI scrolling
 export interface StyledWord {
     word: string;
     style: TextStyle;
 }
 
 /**
- * Parses simple HTML content from TenTap editor into a list of words with their associated styles.
+ * Parses simple HTML content from TenTap editor into a list of styled segments.
+ * IMPORTANT: This preserves EXACT text content including all whitespace.
  * Supports: <b>, <strong>, <i>, <em>, <u>, <span style="color:...">
  */
-export function parseHtmlToStyledWords(html: string): StyledWord[] {
-    if (!html) return [];
+export function parseHtmlToStyledSegments(html: string): { segments: StyledSegment[]; plainText: string } {
+    if (!html) return { segments: [], plainText: '' };
 
     // 1. Tokenize HTML by tags
-    // Regex matches: tags (<...>) or text content
     const tokens = html.split(/(<[^>]+>)/g).filter(t => t.length > 0);
 
-    const words: StyledWord[] = [];
+    const segments: StyledSegment[] = [];
     let currentStyle: TextStyle = {};
     const styleStack: TextStyle[] = [];
+    let plainText = '';
+    let currentIndex = 0;
 
-    // Track if we just added a newline to avoid duplicate newlines if multiple block tags end
-    let justAddedNewline = false;
+    // Track if we need to add a newline for block elements
+    let pendingNewline = false;
 
     // Helper to parse style string "color: red; font-weight: bold"
     const parseInlineStyle = (styleStr: string): TextStyle => {
@@ -39,6 +49,19 @@ export function parseHtmlToStyledWords(html: string): StyledWord[] {
         return style;
     };
 
+    // Helper to add a segment
+    const addSegment = (text: string, style: TextStyle) => {
+        if (text.length === 0) return;
+        segments.push({
+            text,
+            style: { ...style },
+            startIndex: currentIndex,
+            endIndex: currentIndex + text.length
+        });
+        plainText += text;
+        currentIndex += text.length;
+    };
+
     for (const token of tokens) {
         if (token.startsWith('<')) {
             // It's a tag
@@ -52,16 +75,17 @@ export function parseHtmlToStyledWords(html: string): StyledWord[] {
                     currentStyle = styleStack.length > 0 ? { ...styleStack[styleStack.length - 1] } : {};
                 }
 
-                // Block level elements (p, div, br)
-                if (tagName === 'p' || tagName === 'div' || tagName === 'br') {
-                    // Check if we should insert a newline
-                    // Logic: </p> usually implies a line break.
-                    if (!justAddedNewline) {
-                        words.push({ word: '\n', style: {} });
-                        justAddedNewline = true;
-                    }
+                // Block level elements (p, div) - add newline after closing
+                if (tagName === 'p' || tagName === 'div') {
+                    pendingNewline = true;
                 }
             } else {
+                // Add pending newline before new content (but not at start)
+                if (pendingNewline && currentIndex > 0) {
+                    addSegment('\n', {});
+                    pendingNewline = false;
+                }
+
                 // Push style
                 let newStyle: TextStyle = { ...currentStyle };
 
@@ -72,7 +96,6 @@ export function parseHtmlToStyledWords(html: string): StyledWord[] {
                 } else if (tagName === 'u') {
                     newStyle.textDecorationLine = 'underline';
                 } else if (tagName === 'span') {
-                    // Extract style attribute
                     const match = token.match(/style="([^"]+)"/);
                     if (match && match[1]) {
                         const spanStyle = parseInlineStyle(match[1]);
@@ -80,14 +103,9 @@ export function parseHtmlToStyledWords(html: string): StyledWord[] {
                     }
                 }
 
-                // <br> is a self-closing tag often sent as <br> or <br/>
-                // If it's <p>, we might perform a newline on *start*? 
-                // Tiptap sends <p>...</p>. The newline is between Ps.
-                // We'll handle it on close of P.
-                // But if it's <br> explicitly:
+                // Handle <br> as self-closing newline
                 if (tagName === 'br') {
-                    words.push({ word: '\n', style: {} });
-                    justAddedNewline = true;
+                    addSegment('\n', {});
                 }
 
                 styleStack.push(newStyle);
@@ -95,9 +113,13 @@ export function parseHtmlToStyledWords(html: string): StyledWord[] {
             }
         } else {
             // It's text content
-            justAddedNewline = false; // Reset newline flag when we encounter text
+            // Add pending newline before text content
+            if (pendingNewline && currentIndex > 0) {
+                addSegment('\n', {});
+                pendingNewline = false;
+            }
 
-            // Decode entities (basic ones)
+            // Decode entities - preserve ALL whitespace exactly
             const decodedText = token
                 .replace(/&nbsp;/g, ' ')
                 .replace(/&amp;/g, '&')
@@ -105,32 +127,42 @@ export function parseHtmlToStyledWords(html: string): StyledWord[] {
                 .replace(/&gt;/g, '>')
                 .replace(/&quot;/g, '"');
 
-            // Split text into words/chunks
-            // Keep newlines if they are in the text content itself (rare in HTML but possible)
-            const rawWords = decodedText.split(/(\s+)/).filter(w => w.length > 0);
-
-            for (const w of rawWords) {
-                if (w.trim().length > 0 || w === ' ') {
-                    words.push({
-                        word: w,
-                        style: { ...currentStyle }
-                    });
-                    justAddedNewline = false;
-                } else if (w.includes('\n')) {
-                    // Count how many newlines are in this whitespace chunk
-                    const newlineCount = (w.match(/\n/g) || []).length;
-                    for (let i = 0; i < newlineCount; i++) {
-                        words.push({ word: '\n', style: {} });
-                    }
-                    justAddedNewline = true;
-                }
+            // Add the text as a single segment with current style
+            // This preserves exact whitespace including multiple spaces
+            if (decodedText.length > 0) {
+                addSegment(decodedText, currentStyle);
             }
         }
     }
 
-    // Trim trailing newlines
-    while (words.length > 0 && words[words.length - 1].word === '\n') {
-        words.pop();
+    // Trim trailing newlines from segments
+    while (segments.length > 0 && segments[segments.length - 1].text === '\n') {
+        const removed = segments.pop()!;
+        plainText = plainText.slice(0, -removed.text.length);
+    }
+
+    return { segments, plainText };
+}
+
+/**
+ * Legacy function for backward compatibility with AI scrolling.
+ * This extracts words (for matching purposes) while still preserving styling info.
+ */
+export function parseHtmlToStyledWords(html: string): StyledWord[] {
+    const { segments } = parseHtmlToStyledSegments(html);
+    const words: StyledWord[] = [];
+
+    for (const segment of segments) {
+        // Split segment text into words, preserving each word's style
+        // For AI matching, we need individual words
+        const segmentWords = segment.text.split(/(\s+)/);
+        for (const w of segmentWords) {
+            if (w.length > 0 && w.trim().length > 0) {
+                words.push({ word: w, style: segment.style });
+            } else if (w === '\n' || (w.includes('\n'))) {
+                words.push({ word: '\n', style: {} });
+            }
+        }
     }
 
     return words;

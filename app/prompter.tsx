@@ -19,7 +19,7 @@ import { Play, Pause, FastForward, Rewind, Check, ChevronLeft, SwitchCamera, Sea
 import Slider from '@react-native-community/slider';
 import { useVoiceRecognition } from '../hooks/useVoiceRecognition';
 import { setAudioModeAsync } from 'expo-audio';
-import { parseHtmlToStyledWords, StyledWord } from '../utils/htmlParser';
+import { parseHtmlToStyledSegments, parseHtmlToStyledWords, StyledSegment, StyledWord } from '../utils/htmlParser';
 
 
 export default function Teleprompter() {
@@ -52,7 +52,8 @@ export default function Teleprompter() {
     // --- Search State ---
     const [isSearchActive, setIsSearchActive] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
-    const [allMatches, setAllMatches] = useState<{ wordIndex: number; start: number; length: number }[]>([]);
+    // Matches are now indices into the plain text
+    const [allMatches, setAllMatches] = useState<{ start: number; length: number }[]>([]);
     const [matchCursor, setMatchCursor] = useState(0);
 
     // Auto-Start Listening when in 'auto' mode
@@ -79,13 +80,21 @@ export default function Teleprompter() {
     // --- Alignment State ---
     const [matchedIndex, setMatchedIndex] = useState(-1);
     const lastMatchIndexRef = useRef(0);
-    const [scriptWords, setScriptWords] = useState<StyledWord[]>([]);
+    const [scriptWords, setScriptWords] = useState<StyledWord[]>([]);  // For AI scrolling
+    const [scriptSegments, setScriptSegments] = useState<StyledSegment[]>([]);  // For display
+    const [scriptPlainText, setScriptPlainText] = useState('');  // For search
     const [sectionStartIndices, setSectionStartIndices] = useState<number[]>([]);
 
-    // Pre-calculate script words and section boundaries
+    // Pre-calculate script segments, words, and plain text
     useEffect(() => {
         const contentToParse = activeScript?.html_content || activeScript?.content;
         if (contentToParse) {
+            // Parse for display (preserves exact spacing)
+            const { segments, plainText } = parseHtmlToStyledSegments(contentToParse);
+            setScriptSegments(segments);
+            setScriptPlainText(plainText);
+
+            // Parse for AI scrolling (word-based)
             const parsedWords = parseHtmlToStyledWords(contentToParse);
             setScriptWords(parsedWords);
 
@@ -336,18 +345,18 @@ export default function Teleprompter() {
             return;
         }
 
+        // Search in the plain text (supports multi-word and partial word searches)
         const lowerQuery = text.toLowerCase();
-        const matches: { wordIndex: number; start: number; length: number }[] = [];
+        const lowerPlainText = scriptPlainText.toLowerCase();
+        const matches: { start: number; length: number }[] = [];
 
-        scriptWords.forEach((styledWord: any, wordIndex) => {
-            const word = styledWord.word;
-            const lowerWord = word.toLowerCase();
-            let start = lowerWord.indexOf(lowerQuery);
-            while (start !== -1) {
-                matches.push({ wordIndex, start, length: text.length });
-                start = lowerWord.indexOf(lowerQuery, start + 1);
-            }
-        });
+        let searchStart = 0;
+        let idx = lowerPlainText.indexOf(lowerQuery, searchStart);
+        while (idx !== -1) {
+            matches.push({ start: idx, length: text.length });
+            searchStart = idx + 1;
+            idx = lowerPlainText.indexOf(lowerQuery, searchStart);
+        }
 
         setAllMatches(matches);
         setMatchCursor(0);
@@ -357,12 +366,16 @@ export default function Teleprompter() {
         }
     };
 
-    const jumpToMatch = (match: { wordIndex: number; start: number; length: number }) => {
-        const progress = match.wordIndex / scriptWords.length;
+    const jumpToMatch = (match: { start: number; length: number }) => {
+        // Calculate progress based on character position in plain text
+        const progress = match.start / (scriptPlainText.length || 1);
         const targetY = -(progress * contentHeight);
 
         if (scrollMode === 'auto') {
-            lastMatchIndexRef.current = match.wordIndex;
+            // Convert character position to approximate word index
+            const textBefore = scriptPlainText.slice(0, match.start);
+            const wordsBefore = textBefore.split(/\s+/).filter(w => w.length > 0).length;
+            lastMatchIndexRef.current = wordsBefore;
         }
 
         scrollY.value = withTiming(targetY, {
@@ -721,60 +734,113 @@ export default function Teleprompter() {
                                         style={{ fontSize: (activeScript?.font_size || 3) * 8 + 16 }}
                                     >
                                         {(() => {
-                                            if (scriptWords.length === 0) {
-                                                return activeScript?.plain_text || activeScript?.content || "No script content provided.";
+                                            if (scriptSegments.length === 0) {
+                                                return activeScript?.plain_text || "No script content provided.";
                                             }
 
-                                            let matchCounter = 0;
-                                            return scriptWords.map((styledWord: any, wordIdx) => {
-                                                const word = styledWord.word;
-                                                const baseStyle = styledWord.style;
-                                                const isMatchedByAI = wordIdx <= matchedIndex;
+                                            // Build a set of highlighted character ranges from search matches
+                                            const highlightRanges: { start: number; end: number; isActive: boolean }[] = [];
+                                            if (searchQuery && allMatches.length > 0) {
+                                                allMatches.forEach((match, idx) => {
+                                                    highlightRanges.push({
+                                                        start: match.start,
+                                                        end: match.start + match.length,
+                                                        isActive: idx === matchCursor
+                                                    });
+                                                });
+                                            }
 
-                                                if (searchQuery && word.toLowerCase().includes(searchQuery.toLowerCase())) {
-                                                    const parts = word.split(new RegExp(`(${searchQuery})`, 'gi'));
+                                            // Calculate AI matched character position (approximate)
+                                            let aiMatchedCharPos = -1;
+                                            if (matchedIndex >= 0 && scriptWords.length > 0) {
+                                                // Count characters up to the matched word index
+                                                let charCount = 0;
+                                                for (let i = 0; i <= matchedIndex && i < scriptWords.length; i++) {
+                                                    charCount += scriptWords[i].word.length;
+                                                    if (i < matchedIndex) charCount += 1; // space between words
+                                                }
+                                                aiMatchedCharPos = charCount;
+                                            }
+
+                                            // Render segments with exact text preservation
+                                            return scriptSegments.map((segment, segIdx) => {
+                                                const { text, style: baseStyle, startIndex, endIndex } = segment;
+
+                                                // Check if this segment overlaps with any search highlight
+                                                const overlappingHighlights = highlightRanges.filter(
+                                                    h => h.start < endIndex && h.end > startIndex
+                                                );
+
+                                                // Check if this segment is matched by AI
+                                                const isMatchedByAI = aiMatchedCharPos >= 0 && startIndex < aiMatchedCharPos;
+
+                                                if (overlappingHighlights.length === 0) {
+                                                    // No search highlights, render segment as-is
                                                     return (
-                                                        <Text key={wordIdx}>
-                                                            {parts.map((part: string, partIdx: number) => {
-                                                                const isQuery = part.toLowerCase() === searchQuery.toLowerCase();
-                                                                let isActiveMatch = false;
-                                                                if (isQuery) {
-                                                                    if (matchCounter === matchCursor) {
-                                                                        isActiveMatch = true;
-                                                                    }
-                                                                    matchCounter++;
-                                                                }
-
-                                                                return (
-                                                                    <Text
-                                                                        key={partIdx}
-                                                                        style={[
-                                                                            baseStyle,
-                                                                            {
-                                                                                color: isMatchedByAI ? '#4ade80' : (baseStyle.color || 'white'),
-                                                                                backgroundColor: isQuery ? '#f97316' : 'transparent',
-                                                                                opacity: isQuery && !isActiveMatch ? 0.75 : 1
-                                                                            }
-                                                                        ]}
-                                                                    >
-                                                                        {part}
-                                                                    </Text>
-                                                                );
-                                                            })}
-                                                            <Text>{' '}</Text>
+                                                        <Text
+                                                            key={segIdx}
+                                                            style={[
+                                                                baseStyle,
+                                                                { color: isMatchedByAI ? '#4ade80' : (baseStyle.color || 'white') }
+                                                            ]}
+                                                        >
+                                                            {text}
                                                         </Text>
                                                     );
                                                 }
 
+                                                // Split segment by highlight boundaries
+                                                const parts: { text: string; highlight: boolean; isActive: boolean; charStart: number }[] = [];
+                                                let currentPos = startIndex;
+
+                                                // Get all boundary points within this segment
+                                                const boundaries = new Set<number>();
+                                                boundaries.add(startIndex);
+                                                boundaries.add(endIndex);
+                                                overlappingHighlights.forEach(h => {
+                                                    if (h.start > startIndex && h.start < endIndex) boundaries.add(h.start);
+                                                    if (h.end > startIndex && h.end < endIndex) boundaries.add(h.end);
+                                                });
+                                                const sortedBoundaries = Array.from(boundaries).sort((a, b) => a - b);
+
+                                                for (let i = 0; i < sortedBoundaries.length - 1; i++) {
+                                                    const partStart = sortedBoundaries[i];
+                                                    const partEnd = sortedBoundaries[i + 1];
+                                                    const partText = text.slice(partStart - startIndex, partEnd - startIndex);
+
+                                                    // Check if this part is highlighted
+                                                    const matchingHighlight = overlappingHighlights.find(
+                                                        h => h.start <= partStart && h.end >= partEnd
+                                                    );
+
+                                                    parts.push({
+                                                        text: partText,
+                                                        highlight: !!matchingHighlight,
+                                                        isActive: matchingHighlight?.isActive || false,
+                                                        charStart: partStart
+                                                    });
+                                                }
+
                                                 return (
-                                                    <Text
-                                                        key={wordIdx}
-                                                        style={[
-                                                            baseStyle,
-                                                            { color: isMatchedByAI ? '#4ade80' : (baseStyle.color || 'white') }
-                                                        ]}
-                                                    >
-                                                        {word}{' '}
+                                                    <Text key={segIdx}>
+                                                        {parts.map((part, partIdx) => {
+                                                            const partIsAIMatched = aiMatchedCharPos >= 0 && part.charStart < aiMatchedCharPos;
+                                                            return (
+                                                                <Text
+                                                                    key={partIdx}
+                                                                    style={[
+                                                                        baseStyle,
+                                                                        {
+                                                                            color: partIsAIMatched ? '#4ade80' : (baseStyle.color || 'white'),
+                                                                            backgroundColor: part.highlight ? '#f97316' : 'transparent',
+                                                                            opacity: part.highlight && !part.isActive ? 0.75 : 1
+                                                                        }
+                                                                    ]}
+                                                                >
+                                                                    {part.text}
+                                                                </Text>
+                                                            );
+                                                        })}
                                                     </Text>
                                                 );
                                             });
@@ -864,18 +930,22 @@ export default function Teleprompter() {
                     )}
 
                     {/* Mode Selector */}
-                    <View className={`flex-row justify-between bg-zinc-900 rounded-xl p-1 ${isLandscape ? "mb-1" : "mb-2"}`}>
-                        {(['auto', 'fixed', 'wpm'] as const).map((mode) => (
-                            <TouchableOpacity
-                                key={mode}
-                                onPress={() => setScrollMode(mode)}
-                                className={`flex-1 py-1.5 rounded-lg items-center ${scrollMode === mode ? 'bg-zinc-700 shadow-sm' : ''}`}
-                            >
-                                <Text className={`text-[10px] font-bold ${scrollMode === mode ? 'text-white' : 'text-zinc-500'}`}>
-                                    {mode === 'auto' ? 'Auto (AI)' : mode === 'fixed' ? 'Fixed' : 'WPM'}
-                                </Text>
-                            </TouchableOpacity>
-                        ))}
+                    <View style={{ marginBottom: isLandscape ? 4 : 8 }} className="flex-row justify-between bg-zinc-900 rounded-xl p-1">
+                        {(['auto', 'fixed', 'wpm'] as const).map((mode) => {
+                            const isActive = scrollMode === mode;
+                            return (
+                                <TouchableOpacity
+                                    key={mode}
+                                    onPress={() => setScrollMode(mode)}
+                                    style={{ backgroundColor: isActive ? '#3f3f46' : 'transparent' }}
+                                    className="flex-1 py-1.5 rounded-lg items-center"
+                                >
+                                    <Text style={{ color: isActive ? '#ffffff' : '#71717a' }} className="text-[10px] font-bold">
+                                        {mode === 'auto' ? 'Auto (AI)' : mode === 'fixed' ? 'Fixed' : 'WPM'}
+                                    </Text>
+                                </TouchableOpacity>
+                            );
+                        })}
                     </View>
 
                     {/* Bottom Row: Controls + Done Button */}

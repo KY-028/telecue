@@ -129,7 +129,9 @@ export default function ScriptEditor() {
             const json = await editor.getJSON();
             const content = JSON.stringify(json);
 
+            // Ensure database is initialized before attempting to use it
             const db = await SQLite.openDatabaseAsync(DATABASE_NAME);
+
             if (currentScript.id) {
                 await db.runAsync(
                     'UPDATE scripts SET title = ?, content = ?, plain_text = ?, html_content = ?, last_modified = CURRENT_TIMESTAMP WHERE id = ?',
@@ -138,7 +140,10 @@ export default function ScriptEditor() {
                 setToastMessage("Your script was saved to Recent Scripts!");
             } else {
                 // Only insert if there is some content or title to avoid saving empty spam
-                if (!currentScript.title && !content) return;
+                if (!currentScript.title && !content) {
+                    await db.closeAsync();
+                    return;
+                }
 
                 const result = await db.runAsync(
                     'INSERT INTO scripts (title, content, plain_text, html_content, font_size, margin, speed, is_mirrored_h, is_mirrored_v, mode) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
@@ -160,8 +165,12 @@ export default function ScriptEditor() {
                     setToastMessage("Your script was saved to Recent Scripts!");
                 }
             }
+
+            // Close the database connection
+            await db.closeAsync();
         } catch (e) {
             console.error("Failed to save script:", e);
+            setToastMessage("Failed to save script. Please try again.");
         }
     };
 
@@ -210,7 +219,7 @@ export default function ScriptEditor() {
 
     return (
         <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
             style={{ flex: 1 }}
             className="bg-white dark:bg-zinc-950"
             keyboardVerticalOffset={headerHeight}
@@ -229,7 +238,7 @@ export default function ScriptEditor() {
                     keyboardAppearance={isDarkMode ? "dark" : "light"}
                 />
 
-                <View className="flex-1 bg-zinc-50 dark:bg-zinc-900 rounded-2xl overflow-hidden mb-2 border border-zinc-200 dark:border-zinc-800">
+                <View className="flex-1 bg-zinc-50 dark:bg-zinc-900 rounded-2xl overflow-hidden border border-zinc-200 dark:border-zinc-800">
                     <RichText
                         editor={editor}
                         style={{ flex: 1, backgroundColor: isDarkMode ? '#18181b' : '#ffffff' }}
@@ -240,7 +249,7 @@ export default function ScriptEditor() {
                 {/* Navigation Button */}
                 {!isKeyboardVisible && (
                     <TouchableOpacity
-                        className="bg-blue-600 p-5 rounded-2xl items-center shadow-lg mb-12"
+                        className="bg-blue-600 p-5 rounded-2xl items-center shadow-lg mt-4 mb-6"
                         onPress={handleNext}
                     >
                         <Text className="text-white text-xl font-bold">Configure Setup →</Text>
@@ -249,21 +258,11 @@ export default function ScriptEditor() {
             </View>
 
             {/* Custom Toolbar */}
-            {(editorFocused || isKeyboardVisible) && (
+            {editorFocused && (
                 <FormattingToolbar
                     editor={editor}
                     onDone={handleDone}
                 />
-            )}
-
-            {/* Android "Old Style" Floating Done Button */}
-            {Platform.OS === 'android' && isKeyboardVisible && (
-                <TouchableOpacity
-                    onPress={handleDone}
-                    className="absolute bottom-4 right-4 bg-zinc-100 dark:bg-zinc-800 p-3 px-6 rounded-full shadow-lg border border-zinc-200 dark:border-zinc-700 z-50"
-                >
-                    <Text className="text-blue-600 dark:text-blue-400 font-bold">Done</Text>
-                </TouchableOpacity>
             )}
 
             {/* iOS Helper for Title Input */}

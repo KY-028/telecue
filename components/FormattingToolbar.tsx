@@ -40,7 +40,7 @@ export function FormattingToolbar({ editor, onDone }: FormattingToolbarProps) {
     const toggleUnderline = () => editor.toggleUnderline();
 
     return (
-        <View className="bg-zinc-100 dark:bg-zinc-800 border-t border-zinc-200 dark:border-zinc-700 pb-safe relative z-50">
+        <View className="bg-zinc-100 dark:bg-zinc-800 border-t border-zinc-200 dark:border-zinc-700 relative">
             {showColors && (
                 <View
                     style={{ position: 'absolute', bottom: 70, left: 100 }}
@@ -129,8 +129,8 @@ export function FormattingToolbar({ editor, onDone }: FormattingToolbarProps) {
                     </TouchableOpacity>
                 </View>
 
-                {/* Done Button */}
-                <TouchableOpacity onPress={onDone} className="p-2">
+                {/* Done Button - Vertically centered with toolbar items */}
+                <TouchableOpacity onPress={onDone} className="p-2 flex-row items-center justify-center">
                     <Text className="text-blue-600 dark:text-blue-400 font-bold text-lg">Done</Text>
                 </TouchableOpacity>
             </View>

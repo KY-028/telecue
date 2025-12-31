@@ -71,9 +71,14 @@ export default function Recents() {
 
     useEffect(() => {
         const loadScripts = async () => {
-            const db = await SQLite.openDatabaseAsync(DATABASE_NAME);
-            const result = await db.getAllAsync<Script>('SELECT * FROM scripts ORDER BY last_modified DESC');
-            setScripts(result);
+            try {
+                const db = await SQLite.openDatabaseAsync(DATABASE_NAME);
+                const result = await db.getAllAsync<Script>('SELECT * FROM scripts ORDER BY last_modified DESC');
+                setScripts(result);
+                await db.closeAsync();
+            } catch (e) {
+                console.error("Failed to load scripts:", e);
+            }
         };
         loadScripts();
     }, []);

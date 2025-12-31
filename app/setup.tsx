@@ -8,7 +8,7 @@ import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-g
 import Animated, { useSharedValue, useAnimatedStyle, runOnJS, type SharedValue } from 'react-native-reanimated';
 import { useEffect, useMemo } from 'react';
 
-import { parseHtmlToStyledWords, StyledWord } from '../utils/htmlParser';
+import { parseHtmlToStyledSegments, StyledSegment } from '../utils/htmlParser';
 
 const Handle = ({ side, margin, onDragEnd }: { side: 'left' | 'right', margin: SharedValue<number>, onDragEnd: (val: number) => void }) => {
     const context = useSharedValue({ startMargin: 0 });
@@ -82,9 +82,11 @@ const DraggableMarginPreview = ({ activeScript, updateSettings }: { activeScript
     const fontSizePx = (activeScript.font_size || 3) * 8 + 16;
 
     // Use the same parser as the prompter
-    const previewWords = useMemo(() => {
+    const previewSegments = useMemo(() => {
         const contentToParse = activeScript?.html_content || activeScript?.content;
-        return contentToParse ? parseHtmlToStyledWords(contentToParse) : [];
+        if (!contentToParse) return [];
+        const { segments } = parseHtmlToStyledSegments(contentToParse);
+        return segments;
     }, [activeScript?.html_content, activeScript?.content]);
 
     if (!activeScript) return null;
@@ -105,21 +107,18 @@ const DraggableMarginPreview = ({ activeScript, updateSettings }: { activeScript
                         className="text-white font-bold text-center"
                         style={{ fontSize: fontSizePx }}
                     >
-                        {previewWords.length > 0 ? (
-                            previewWords.map((styledWord: StyledWord, idx: number) => {
-                                const isNewline = styledWord.word === '\n';
-                                return (
-                                    <Text
-                                        key={idx}
-                                        style={[
-                                            styledWord.style,
-                                            { color: styledWord.style.color || 'white' }
-                                        ]}
-                                    >
-                                        {styledWord.word}{isNewline ? '\n' : ''}
-                                    </Text>
-                                );
-                            })
+                        {previewSegments.length > 0 ? (
+                            previewSegments.map((segment: StyledSegment, idx: number) => (
+                                <Text
+                                    key={idx}
+                                    style={[
+                                        segment.style,
+                                        { color: segment.style.color || 'white' }
+                                    ]}
+                                >
+                                    {segment.text}
+                                </Text>
+                            ))
                         ) : (
                             "Your script content will appear here..."
                         )}
