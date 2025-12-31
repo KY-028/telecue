@@ -1,7 +1,9 @@
 import { useEffect } from 'react';
 import { useColorScheme } from 'react-native';
 import { Stack } from 'expo-router';
-import { initDatabase } from '../db/schema';
+
+import { initDatabase, DATABASE_NAME } from '../db/schema';
+import { SQLiteProvider } from 'expo-sqlite';
 import '../global.css';
 import { StatusBar } from 'expo-status-bar';
 import * as ScreenOrientation from 'expo-screen-orientation';
@@ -10,9 +12,8 @@ export default function RootLayout() {
     const colorScheme = useColorScheme();
     const isDarkMode = colorScheme === 'dark';
 
-    // Load Database & Orientation
+    // Load Orientation
     useEffect(() => {
-        initDatabase().catch(err => console.error("Database init error:", err));
 
         const unlockOrientation = async () => {
             await ScreenOrientation.unlockAsync();
@@ -21,7 +22,7 @@ export default function RootLayout() {
     }, []);
 
     return (
-        <>
+        <SQLiteProvider databaseName={DATABASE_NAME} onInit={initDatabase} useSuspense>
             <StatusBar style={isDarkMode ? 'light' : 'dark'} hidden={false} />
             <Stack
                 screenOptions={{
@@ -40,6 +41,6 @@ export default function RootLayout() {
                 <Stack.Screen name="recents" options={{ title: 'Recent Scripts' }} />
                 <Stack.Screen name="prompter" options={{ headerShown: false }} />
             </Stack>
-        </>
+        </SQLiteProvider>
     );
 }

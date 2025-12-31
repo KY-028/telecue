@@ -3,11 +3,12 @@ import { RichText, useEditorBridge, useBridgeState, TenTapStartKit, CoreBridge, 
 import { FormattingToolbar } from '../components/FormattingToolbar';
 import { useEffect, useRef, useState, useMemo } from 'react';
 import { useHeaderHeight } from '@react-navigation/elements';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useRouter } from 'expo-router';
 import { useScriptStore } from '../store/useScriptStore';
 import { Save } from 'lucide-react-native';
-import * as SQLite from 'expo-sqlite';
+import { useSQLiteContext } from 'expo-sqlite';
 import { DATABASE_NAME } from '../db/schema';
 
 const FONT_FAMILY = '-apple-system, Roboto, "Helvetica Neue", system-ui, sans-serif';
@@ -65,6 +66,8 @@ export default function ScriptEditor() {
     const [isKeyboardVisible, setKeyboardVisible] = useState(false);
     const colorScheme = useColorScheme();
     const isDarkMode = colorScheme === 'dark';
+    const db = useSQLiteContext();
+    const insets = useSafeAreaInsets();
 
     // Parse initial content - support both HTML and JSON (AST)
     // IMPORTANT: Dependency is activeScript?.id to avoid re-initializing editor on every keystroke
@@ -88,7 +91,7 @@ export default function ScriptEditor() {
         bridgeExtensions: [
             ...TenTapStartKit,
             CoreBridge.configureCSS(EDITOR_CSS),
-            PlaceholderBridge.configureExtension({ placeholder: 'Start writing your script here...' }),
+            PlaceholderBridge.configureExtension({ placeholder: 'Type or paste your script here...' }),
         ],
         theme: isDarkMode ? darkEditorTheme : defaultEditorTheme,
         onChange: async () => {
@@ -129,9 +132,6 @@ export default function ScriptEditor() {
             const json = await editor.getJSON();
             const content = JSON.stringify(json);
 
-            // Ensure database is initialized before attempting to use it
-            const db = await SQLite.openDatabaseAsync(DATABASE_NAME);
-
             if (currentScript.id) {
                 await db.runAsync(
                     'UPDATE scripts SET title = ?, content = ?, plain_text = ?, html_content = ?, last_modified = CURRENT_TIMESTAMP WHERE id = ?',
@@ -141,7 +141,6 @@ export default function ScriptEditor() {
             } else {
                 // Only insert if there is some content or title to avoid saving empty spam
                 if (!currentScript.title && !content) {
-                    await db.closeAsync();
                     return;
                 }
 
@@ -165,12 +164,14 @@ export default function ScriptEditor() {
                     setToastMessage("Your script was saved to Recent Scripts!");
                 }
             }
+        } catch (e: any) {
+            const errorMessage = e?.message || String(e);
+            console.error("Failed to save script:", errorMessage);
 
-            // Close the database connection
-            await db.closeAsync();
-        } catch (e) {
-            console.error("Failed to save script:", e);
-            setToastMessage("Failed to save script. Please try again.");
+            // Don't show toast for transient issues
+            if (!errorMessage.includes('NullPointerException') && !errorMessage.includes('database')) {
+                setToastMessage("Failed to save script. Please try again.");
+            }
         }
     };
 
@@ -218,63 +219,69 @@ export default function ScriptEditor() {
     }
 
     return (
-        <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-            style={{ flex: 1 }}
-            className="bg-white dark:bg-zinc-950"
-            keyboardVerticalOffset={headerHeight}
-        >
-            <View
-                className="flex-1"
-                style={{ paddingHorizontal: isLandscape ? 60 : 24, paddingTop: 24 }}
+        <>
+            <KeyboardAvoidingView
+                behavior={Platform.OS === 'ios' ? 'padding' : (isKeyboardVisible ? 'height' : undefined)}
+                style={{ flex: 1 }}
+                className="bg-white dark:bg-zinc-950"
+                keyboardVerticalOffset={Platform.OS === 'ios' ? headerHeight : 35}
             >
-                <TextInput
-                    placeholder="Script Title"
-                    placeholderTextColor={isDarkMode ? "#52525b" : "#a1a1aa"}
-                    className="text-black dark:text-white text-2xl font-bold mb-4"
-                    value={activeScript?.title}
-                    onChangeText={(text) => useScriptStore.getState().updateActiveScriptSettings({ title: text })}
-                    inputAccessoryViewID="titleDoneAccessory"
-                    keyboardAppearance={isDarkMode ? "dark" : "light"}
-                />
-
-                <View className="flex-1 bg-zinc-50 dark:bg-zinc-900 rounded-2xl overflow-hidden border border-zinc-200 dark:border-zinc-800">
-                    <RichText
-                        editor={editor}
-                        style={{ flex: 1, backgroundColor: isDarkMode ? '#18181b' : '#ffffff' }}
-                        scrollEnabled={true}
+                <View
+                    className="flex-1"
+                    style={{ paddingHorizontal: isLandscape ? 60 : 24, paddingTop: 24 }}
+                >
+                    <TextInput
+                        placeholder="Script Title"
+                        placeholderTextColor={isDarkMode ? "#52525b" : "#a1a1aa"}
+                        className="text-black dark:text-white text-2xl font-bold mb-4"
+                        value={activeScript?.title}
+                        onChangeText={(text) => useScriptStore.getState().updateActiveScriptSettings({ title: text })}
+                        inputAccessoryViewID="titleDoneAccessory"
+                        keyboardAppearance={isDarkMode ? "dark" : "light"}
                     />
+
+                    <View className="flex-1 bg-zinc-50 dark:bg-zinc-900 rounded-2xl overflow-hidden border border-zinc-200 dark:border-zinc-800">
+                        <RichText
+                            editor={editor}
+                            style={{ flex: 1, backgroundColor: isDarkMode ? '#18181b' : '#ffffff' }}
+                            scrollEnabled={true}
+                        />
+                    </View>
+
+                    {/* Navigation Button */}
+                    {!isKeyboardVisible && (
+                        <TouchableOpacity
+                            className="bg-blue-600 p-5 rounded-2xl items-center shadow-lg mt-4 mb-6"
+                            onPress={handleNext}
+                        >
+                            <Text className="text-white text-xl font-bold">Configure Setup →</Text>
+                        </TouchableOpacity>
+                    )}
                 </View>
 
-                {/* Navigation Button */}
-                {!isKeyboardVisible && (
-                    <TouchableOpacity
-                        className="bg-blue-600 p-5 rounded-2xl items-center shadow-lg mt-4 mb-6"
-                        onPress={handleNext}
-                    >
-                        <Text className="text-white text-xl font-bold">Configure Setup →</Text>
-                    </TouchableOpacity>
+
+                {/* iOS Helper for Title Input */}
+                {Platform.OS === 'ios' && (
+                    <InputAccessoryView nativeID="titleDoneAccessory">
+                        <View className="bg-zinc-100 dark:bg-zinc-800 p-2 flex-row justify-end border-t border-zinc-200 dark:border-zinc-700">
+                            <TouchableOpacity onPress={Keyboard.dismiss} className="p-2 px-4">
+                                <Text className="text-blue-600 dark:text-blue-400 font-bold text-lg">Done</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </InputAccessoryView>
                 )}
-            </View>
 
-            {/* Custom Toolbar */}
-            {editorFocused && (
-                <FormattingToolbar
-                    editor={editor}
-                    onDone={handleDone}
-                />
-            )}
-
-            {/* iOS Helper for Title Input */}
-            {Platform.OS === 'ios' && (
-                <InputAccessoryView nativeID="titleDoneAccessory">
-                    <View className="bg-zinc-100 dark:bg-zinc-800 p-2 flex-row justify-end border-t border-zinc-200 dark:border-zinc-700">
-                        <TouchableOpacity onPress={Keyboard.dismiss} className="p-2 px-4">
-                            <Text className="text-blue-600 dark:text-blue-400 font-bold text-lg">Done</Text>
-                        </TouchableOpacity>
+                {/* Custom Toolbar */}
+                {editorFocused && (
+                    <View style={{ paddingBottom: insets.bottom }}>
+                        <FormattingToolbar
+                            editor={editor}
+                            onDone={handleDone}
+                        />
                     </View>
-                </InputAccessoryView>
-            )}
-        </KeyboardAvoidingView>
+                )}
+
+            </KeyboardAvoidingView>
+        </>
     );
 }

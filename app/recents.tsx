@@ -1,10 +1,9 @@
 import { View, Text, TouchableOpacity, FlatList, useWindowDimensions, useColorScheme } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import * as SQLite from 'expo-sqlite';
+import { useSQLiteContext } from 'expo-sqlite';
 import { useScriptStore } from '../store/useScriptStore';
 import { FileText, ChevronRight } from 'lucide-react-native';
-import { DATABASE_NAME } from '../db/schema';
 
 // Helper to extract displayable text from content
 const getDisplayableText = (script: Script): string => {
@@ -61,6 +60,7 @@ type Script = {
 };
 
 export default function Recents() {
+    const db = useSQLiteContext();
     const router = useRouter();
     const { width, height } = useWindowDimensions();
     const colorScheme = useColorScheme();
@@ -72,10 +72,8 @@ export default function Recents() {
     useEffect(() => {
         const loadScripts = async () => {
             try {
-                const db = await SQLite.openDatabaseAsync(DATABASE_NAME);
                 const result = await db.getAllAsync<Script>('SELECT * FROM scripts ORDER BY last_modified DESC');
                 setScripts(result);
-                await db.closeAsync();
             } catch (e) {
                 console.error("Failed to load scripts:", e);
             }

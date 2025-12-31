@@ -2,9 +2,7 @@ import * as SQLite from 'expo-sqlite';
 
 export const DATABASE_NAME = 'telecue.db';
 
-export const initDatabase = async () => {
-  const db = await SQLite.openDatabaseAsync(DATABASE_NAME);
-
+export const initDatabase = async (db: SQLite.SQLiteDatabase) => {
   await db.execAsync(`
     PRAGMA journal_mode = WAL;
     CREATE TABLE IF NOT EXISTS scripts (
@@ -38,6 +36,4 @@ export const initDatabase = async () => {
   } catch (e) {
     console.log("Migration check failed or columns exist:", e);
   }
-
-  return db;
 };

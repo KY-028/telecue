@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { View, Text, TouchableOpacity, Dimensions, ScrollView, StyleSheet, Alert, Animated as RNAnimated, Linking, useWindowDimensions, TextInput } from 'react-native';
+import { View, Text, TouchableOpacity, Dimensions, ScrollView, StyleSheet, Alert, Animated as RNAnimated, Linking, useWindowDimensions, TextInput, AppState } from 'react-native';
 import { GestureDetector, Gesture, GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useRouter } from 'expo-router';
+import { useIsFocused } from '@react-navigation/native';
 import { useCameraDevice, useCameraPermission, useMicrophonePermission, Camera } from 'react-native-vision-camera';
 import { useScriptStore } from '../store/useScriptStore';
 import { WPM_MIN, WPM_MAX } from '../constants/prompter';
@@ -25,9 +26,24 @@ import { parseHtmlToStyledSegments, parseHtmlToStyledWords, StyledSegment, Style
 export default function Teleprompter() {
     // --- Hooks & Store ---
     const router = useRouter();
+    const isFocused = useIsFocused();
     const { width: windowWidth, height: windowHeight } = useWindowDimensions();
     const isLandscape = windowWidth > windowHeight;
     const { activeScript, updateActiveScriptSettings } = useScriptStore();
+
+    // --- App State for Camera ---
+    const appState = useRef(AppState.currentState);
+    const [isForeground, setIsForeground] = useState(appState.current === 'active');
+
+    useEffect(() => {
+        const subscription = AppState.addEventListener('change', nextAppState => {
+            appState.current = nextAppState;
+            setIsForeground(nextAppState === 'active');
+        });
+        return () => subscription.remove();
+    }, []);
+
+    const isCameraActive = isFocused && isForeground;
 
     // Vision Camera Hooks
     const { hasPermission: hasCamPermission, requestPermission: requestCamPermission } = useCameraPermission();
@@ -622,7 +638,7 @@ export default function Teleprompter() {
                             ref={cameraRef}
                             style={StyleSheet.absoluteFill}
                             device={activeDevice}
-                            isActive={true}
+                            isActive={isCameraActive}
                             video={true}
                             audio={true}
                         />
