@@ -44,7 +44,8 @@
         }
       ],
       "expo-screen-orientation",
-      "expo-brightness"
+      "expo-brightness",
+      "expo-localization"
     ],
     "extra": {
       "router": {},

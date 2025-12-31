@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { View, TouchableOpacity, Text, ScrollView, Platform, useColorScheme } from 'react-native';
 import { Bold, Italic, Underline, Palette, Type } from 'lucide-react-native';
 import { EditorBridge, useBridgeState } from '@10play/tentap-editor';
+import i18n from '../utils/i18n';
 
 interface FormattingToolbarProps {
     editor: EditorBridge;
@@ -131,7 +132,7 @@ export function FormattingToolbar({ editor, onDone }: FormattingToolbarProps) {
 
                 {/* Done Button - Vertically centered with toolbar items */}
                 <TouchableOpacity onPress={onDone} className="p-2 flex-row items-center justify-center">
-                    <Text className="text-blue-600 dark:text-blue-400 font-bold text-lg">Done</Text>
+                    <Text className="text-blue-600 dark:text-blue-400 font-bold text-lg">{i18n.t('done')}</Text>
                 </TouchableOpacity>
             </View>
         </View>

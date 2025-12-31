@@ -9,7 +9,7 @@ import { useRouter } from 'expo-router';
 import { useScriptStore } from '../store/useScriptStore';
 import { Save } from 'lucide-react-native';
 import { useSQLiteContext } from 'expo-sqlite';
-import { DATABASE_NAME } from '../db/schema';
+import i18n from '../utils/i18n';
 
 const FONT_FAMILY = '-apple-system, Roboto, "Helvetica Neue", system-ui, sans-serif';
 const EDITOR_CSS = `
@@ -59,6 +59,7 @@ const EDITOR_CSS = `
 `;
 
 export default function ScriptEditor() {
+    const db = useSQLiteContext();
     const { activeScript, setActiveScript, setToastMessage, updateActiveScriptSettings } = useScriptStore();
     const router = useRouter();
     const { width, height } = useWindowDimensions();
@@ -66,7 +67,6 @@ export default function ScriptEditor() {
     const [isKeyboardVisible, setKeyboardVisible] = useState(false);
     const colorScheme = useColorScheme();
     const isDarkMode = colorScheme === 'dark';
-    const db = useSQLiteContext();
     const insets = useSafeAreaInsets();
 
     // Parse initial content - support both HTML and JSON (AST)
@@ -91,7 +91,7 @@ export default function ScriptEditor() {
         bridgeExtensions: [
             ...TenTapStartKit,
             CoreBridge.configureCSS(EDITOR_CSS),
-            PlaceholderBridge.configureExtension({ placeholder: 'Type or paste your script here...' }),
+            PlaceholderBridge.configureExtension({ placeholder: i18n.t('startWriting') }),
         ],
         theme: isDarkMode ? darkEditorTheme : defaultEditorTheme,
         onChange: async () => {
@@ -137,7 +137,7 @@ export default function ScriptEditor() {
                     'UPDATE scripts SET title = ?, content = ?, plain_text = ?, html_content = ?, last_modified = CURRENT_TIMESTAMP WHERE id = ?',
                     [currentScript.title, content, currentScript.plain_text || '', currentScript.html_content || '', currentScript.id]
                 );
-                setToastMessage("Your script was saved to Recent Scripts!");
+                setToastMessage(i18n.t('scriptSaved'));
             } else {
                 // Only insert if there is some content or title to avoid saving empty spam
                 if (!currentScript.title && !content) {
@@ -147,7 +147,7 @@ export default function ScriptEditor() {
                 const result = await db.runAsync(
                     'INSERT INTO scripts (title, content, plain_text, html_content, font_size, margin, speed, is_mirrored_h, is_mirrored_v, mode) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
                     [
-                        currentScript.title || 'Untitled',
+                        currentScript.title || i18n.t('untitled'),
                         content || '',
                         currentScript.plain_text || '',
                         currentScript.html_content || '',
@@ -161,7 +161,7 @@ export default function ScriptEditor() {
                 );
                 if (result.lastInsertRowId) {
                     setActiveScript({ ...currentScript, content, id: result.lastInsertRowId });
-                    setToastMessage("Your script was saved to Recent Scripts!");
+                    setToastMessage(i18n.t('scriptSaved'));
                 }
             }
         } catch (e: any) {
@@ -170,7 +170,7 @@ export default function ScriptEditor() {
 
             // Don't show toast for transient issues
             if (!errorMessage.includes('NullPointerException') && !errorMessage.includes('database')) {
-                setToastMessage("Failed to save script. Please try again.");
+                setToastMessage(i18n.t('saveFailed'));
             }
         }
     };
@@ -210,9 +210,9 @@ export default function ScriptEditor() {
     if (!activeScript) {
         return (
             <View className="flex-1 bg-white dark:bg-black items-center justify-center p-6">
-                <Text className="text-black dark:text-white text-center mb-6 text-lg">No script selected.</Text>
+                <Text className="text-black dark:text-white text-center mb-6 text-lg">{i18n.t('noScriptSelected')}</Text>
                 <TouchableOpacity className="bg-blue-600 p-4 rounded-xl" onPress={() => router.replace('/')}>
-                    <Text className="text-white font-bold">Go Back</Text>
+                    <Text className="text-white font-bold">{i18n.t('goBack')}</Text>
                 </TouchableOpacity>
             </View>
         );
@@ -231,7 +231,7 @@ export default function ScriptEditor() {
                     style={{ paddingHorizontal: isLandscape ? 60 : 24, paddingTop: 24 }}
                 >
                     <TextInput
-                        placeholder="Script Title"
+                        placeholder={i18n.t('scriptTitle')}
                         placeholderTextColor={isDarkMode ? "#52525b" : "#a1a1aa"}
                         className="text-black dark:text-white text-2xl font-bold mb-4"
                         value={activeScript?.title}
@@ -245,6 +245,7 @@ export default function ScriptEditor() {
                             editor={editor}
                             style={{ flex: 1, backgroundColor: isDarkMode ? '#18181b' : '#ffffff' }}
                             scrollEnabled={true}
+                            focusable={true}
                         />
                     </View>
 
@@ -254,7 +255,7 @@ export default function ScriptEditor() {
                             className="bg-blue-600 p-5 rounded-2xl items-center shadow-lg mt-4 mb-6"
                             onPress={handleNext}
                         >
-                            <Text className="text-white text-xl font-bold">Configure Setup →</Text>
+                            <Text className="text-white text-xl font-bold">{i18n.t('configureSetup')} →</Text>
                         </TouchableOpacity>
                     )}
                 </View>
@@ -265,7 +266,7 @@ export default function ScriptEditor() {
                     <InputAccessoryView nativeID="titleDoneAccessory">
                         <View className="bg-zinc-100 dark:bg-zinc-800 p-2 flex-row justify-end border-t border-zinc-200 dark:border-zinc-700">
                             <TouchableOpacity onPress={Keyboard.dismiss} className="p-2 px-4">
-                                <Text className="text-blue-600 dark:text-blue-400 font-bold text-lg">Done</Text>
+                                <Text className="text-blue-600 dark:text-blue-400 font-bold text-lg">{i18n.t('done')}</Text>
                             </TouchableOpacity>
                         </View>
                     </InputAccessoryView>
@@ -273,7 +274,7 @@ export default function ScriptEditor() {
 
                 {/* Custom Toolbar */}
                 {editorFocused && (
-                    <View style={{ paddingBottom: insets.bottom }}>
+                    <View style={{ paddingBottom: Platform.OS === 'ios' ? 0 : insets.bottom }}>
                         <FormattingToolbar
                             editor={editor}
                             onDone={handleDone}

@@ -9,6 +9,7 @@ import Animated, { useSharedValue, useAnimatedStyle, runOnJS, type SharedValue }
 import { useEffect, useMemo } from 'react';
 
 import { parseHtmlToStyledSegments, StyledSegment } from '../utils/htmlParser';
+import i18n from '../utils/i18n';
 
 const Handle = ({ side, margin, onDragEnd }: { side: 'left' | 'right', margin: SharedValue<number>, onDragEnd: (val: number) => void }) => {
     const context = useSharedValue({ startMargin: 0 });
@@ -93,7 +94,7 @@ const DraggableMarginPreview = ({ activeScript, updateSettings }: { activeScript
 
     return (
         <View className="h-64 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 mb-8 relative rounded-xl">
-            <Text className="text-zinc-400 dark:text-zinc-500 text-xs absolute top-2 left-0 right-0 text-center uppercase tracking-widest z-10">Preview (Drag Edges)</Text>
+            <Text className="text-zinc-400 dark:text-zinc-500 text-xs absolute top-2 left-0 right-0 text-center uppercase tracking-widest z-10">{i18n.t('previewDrag')}</Text>
 
             <Animated.View
                 className="flex-1 bg-black"
@@ -120,7 +121,7 @@ const DraggableMarginPreview = ({ activeScript, updateSettings }: { activeScript
                                 </Text>
                             ))
                         ) : (
-                            "Your script content will appear here..."
+                            i18n.t('startWriting')
                         )}
                     </Text>
                 </ScrollView>
@@ -143,9 +144,9 @@ export default function Setup() {
     if (!activeScript) {
         return (
             <View className="flex-1 bg-white dark:bg-black items-center justify-center p-6">
-                <Text className="text-black dark:text-white text-center mb-6 text-lg">No script selected.</Text>
+                <Text className="text-black dark:text-white text-center mb-6 text-lg">{i18n.t('noScriptSelected')}</Text>
                 <TouchableOpacity className="bg-blue-600 p-4 rounded-xl" onPress={() => router.replace('/')}>
-                    <Text className="text-white font-bold">Go Back</Text>
+                    <Text className="text-white font-bold">{i18n.t('goBack')}</Text>
                 </TouchableOpacity>
             </View>
         );
@@ -162,14 +163,14 @@ export default function Setup() {
                     <DraggableMarginPreview activeScript={activeScript} updateSettings={updateActiveScriptSettings} />
 
                     {/* Mode Select */}
-                    <Text className="text-zinc-600 dark:text-zinc-400 font-bold mb-4 uppercase tracking-wider text-xs">Teleprompter Mode</Text>
+                    <Text className="text-zinc-600 dark:text-zinc-400 font-bold mb-4 uppercase tracking-wider text-xs">{i18n.t('teleprompterMode')}</Text>
                     <View className="flex-row gap-4 mb-8">
                         <TouchableOpacity
                             className={`flex-1 p-4 rounded-2xl border-2 ${activeScript.mode === 'phone' ? 'border-blue-600 bg-blue-600/10' : 'border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900'}`}
                             onPress={() => updateActiveScriptSettings({ mode: 'phone' })}
                         >
                             <Smartphone color={activeScript.mode === 'phone' ? '#2563eb' : (isDarkMode ? '#71717a' : '#a1a1aa')} size={24} />
-                            <Text className={`mt-2 font-semibold ${activeScript.mode === 'phone' ? (isDarkMode ? 'text-white' : 'text-blue-600') : (isDarkMode ? 'text-zinc-400' : 'text-zinc-500')}`}>Phone Record</Text>
+                            <Text className={`mt-2 font-semibold ${activeScript.mode === 'phone' ? (isDarkMode ? 'text-white' : 'text-blue-600') : (isDarkMode ? 'text-zinc-400' : 'text-zinc-500')}`}>{i18n.t('phoneRecord')}</Text>
                         </TouchableOpacity>
 
                         <TouchableOpacity
@@ -177,11 +178,11 @@ export default function Setup() {
                             onPress={() => updateActiveScriptSettings({ mode: 'rig' })}
                         >
                             <Monitor color={activeScript.mode === 'rig' ? '#2563eb' : (isDarkMode ? '#71717a' : '#a1a1aa')} size={24} />
-                            <Text className={`mt-2 font-semibold ${activeScript.mode === 'rig' ? (isDarkMode ? 'text-white' : 'text-blue-600') : (isDarkMode ? 'text-zinc-400' : 'text-zinc-500')}`}>Teleprompter Rig</Text>
+                            <Text className={`mt-2 font-semibold ${activeScript.mode === 'rig' ? (isDarkMode ? 'text-white' : 'text-blue-600') : (isDarkMode ? 'text-zinc-400' : 'text-zinc-500')}`}>{i18n.t('teleprompterRig')}</Text>
                         </TouchableOpacity>
                     </View>
 
-                    <Text className="text-zinc-600 dark:text-zinc-400 font-bold mb-4 uppercase tracking-wider text-xs">Display Configuration</Text>
+                    <Text className="text-zinc-600 dark:text-zinc-400 font-bold mb-4 uppercase tracking-wider text-xs">{i18n.t('displayConfig')}</Text>
 
                     <View className="bg-zinc-50 dark:bg-zinc-900 rounded-3xl p-6 gap-8 border border-zinc-100 dark:border-zinc-800">
 
@@ -189,7 +190,7 @@ export default function Setup() {
                         <View>
                             <View className="flex-row items-center gap-3 mb-2">
                                 <Type color={isDarkMode ? "#71717a" : "#a1a1aa"} size={20} />
-                                <Text className="text-black dark:text-white text-lg">Font Size: {activeScript.font_size}</Text>
+                                <Text className="text-black dark:text-white text-lg">{i18n.t('fontSize')}: {activeScript.font_size}</Text>
                             </View>
                             <Slider
                                 style={{ width: '100%', height: 40 }}
@@ -209,7 +210,7 @@ export default function Setup() {
                             <View className="flex-row items-center justify-between">
                                 <View className="flex-row items-center gap-3">
                                     <MoveHorizontal color={isDarkMode ? "#71717a" : "#a1a1aa"} size={20} />
-                                    <Text className="text-black dark:text-white text-lg">Mirror Horizontal</Text>
+                                    <Text className="text-black dark:text-white text-lg">{i18n.t('mirrorHorizontal')}</Text>
                                 </View>
                                 <Switch
                                     value={activeScript.is_mirrored_h}
@@ -220,7 +221,7 @@ export default function Setup() {
                             <View className="flex-row items-center justify-between">
                                 <View className="flex-row items-center gap-3">
                                     <MoveHorizontal color={isDarkMode ? "#71717a" : "#a1a1aa"} size={20} className="rotate-90" />
-                                    <Text className="text-black dark:text-white text-lg">Mirror Vertical</Text>
+                                    <Text className="text-black dark:text-white text-lg">{i18n.t('mirrorVertical')}</Text>
                                 </View>
                                 <Switch
                                     value={activeScript.is_mirrored_v}
@@ -236,7 +237,7 @@ export default function Setup() {
                         className="bg-green-600 p-5 rounded-2xl items-center shadow-lg mt-8 mb-10"
                         onPress={() => router.push('/prompter')}
                     >
-                        <Text className="text-white text-xl font-bold">Start Teleprompter</Text>
+                        <Text className="text-white text-xl font-bold">{i18n.t('startTeleprompter')}</Text>
                     </TouchableOpacity>
                 </View>
             </ScrollView>

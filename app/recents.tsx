@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useScriptStore } from '../store/useScriptStore';
 import { FileText, ChevronRight } from 'lucide-react-native';
+import i18n from '../utils/i18n';
 
 // Helper to extract displayable text from content
 const getDisplayableText = (script: Script): string => {
@@ -41,7 +42,7 @@ const getDisplayableText = (script: Script): string => {
         }
     }
 
-    return 'No content';
+    return i18n.t('noContent');
 };
 
 type Script = {
@@ -107,7 +108,7 @@ export default function Recents() {
         >
             {scripts.length === 0 ? (
                 <View className="flex-1 items-center justify-center">
-                    <Text className="text-zinc-400 dark:text-zinc-500 text-lg">No saved scripts found.</Text>
+                    <Text className="text-zinc-400 dark:text-zinc-500 text-lg">{i18n.t('noSavedScripts')}</Text>
                 </View>
             ) : (
                 <FlatList

@@ -3,6 +3,7 @@ import { Link, useRouter } from 'expo-router';
 import { useScriptStore } from '../store/useScriptStore';
 import { Plus, History } from 'lucide-react-native';
 import { useEffect } from 'react';
+import i18n from '../utils/i18n';
 
 export default function Home() {
     const router = useRouter();
@@ -38,8 +39,8 @@ export default function Home() {
             )}
 
             <View className="mt-10 mb-8">
-                <Text className="text-4xl font-bold text-black dark:text-white">TeleCue</Text>
-                <Text className="text-gray-500 dark:text-gray-400 mt-2 text-lg">Your personal teleprompter companion</Text>
+                <Text className="text-4xl font-bold text-black dark:text-white">{i18n.t('appName')}</Text>
+                <Text className="text-gray-500 dark:text-gray-400 mt-2 text-lg">{i18n.t('appSubtitle')}</Text>
             </View>
 
             <View className="gap-4">
@@ -49,8 +50,8 @@ export default function Home() {
                     onPress={handleNewScript}
                 >
                     <View>
-                        <Text className="text-white text-xl font-semibold">New Script</Text>
-                        <Text className="text-blue-100 dark:text-blue-200 text-sm mt-1">Start fresh with a new draft</Text>
+                        <Text className="text-white text-xl font-semibold">{i18n.t('newScript')}</Text>
+                        <Text className="text-blue-100 dark:text-blue-200 text-sm mt-1">{i18n.t('newScriptSubtitle')}</Text>
                     </View>
                     <Plus size={32} color="white" />
                 </TouchableOpacity>
@@ -61,8 +62,8 @@ export default function Home() {
                         activeOpacity={0.8}
                     >
                         <View>
-                            <Text className="text-black dark:text-white text-xl font-semibold">Recent Scripts</Text>
-                            <Text className="text-zinc-400 dark:text-zinc-500 text-sm mt-1">Pick up where you left off</Text>
+                            <Text className="text-black dark:text-white text-xl font-semibold">{i18n.t('recentScripts')}</Text>
+                            <Text className="text-zinc-400 dark:text-zinc-500 text-sm mt-1">{i18n.t('recentScriptsSubtitle')}</Text>
                         </View>
                         <History size={32} color={isDarkMode ? "#71717a" : "#a1a1aa"} />
                     </TouchableOpacity>

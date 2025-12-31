@@ -21,6 +21,7 @@ import Slider from '@react-native-community/slider';
 import { useVoiceRecognition } from '../hooks/useVoiceRecognition';
 import { setAudioModeAsync } from 'expo-audio';
 import { parseHtmlToStyledSegments, parseHtmlToStyledWords, StyledSegment, StyledWord } from '../utils/htmlParser';
+import i18n from '../utils/i18n';
 
 
 export default function Teleprompter() {
@@ -76,7 +77,7 @@ export default function Teleprompter() {
     useEffect(() => {
         if (scrollMode === 'auto') {
             if (isCallActive) {
-                Alert.alert("Mode Unavailable", "Seems like you're in another call! Mode unavailable during calls.");
+                Alert.alert(i18n.t('modeUnavailable'), i18n.t('callActiveError'));
                 setScrollMode('fixed');
                 return;
             }
@@ -149,8 +150,8 @@ export default function Teleprompter() {
                 if (scrollMode === 'auto') {
                     setScrollMode('fixed');
                     Alert.alert(
-                        "Inactivity Detected",
-                        "We haven't heard you for a while, so we've switched back to Fixed scroll mode to save API costs."
+                        i18n.t('inactivityDetected'),
+                        i18n.t('inactivityMessage')
                     );
                 }
             }, 10000);
@@ -169,7 +170,7 @@ export default function Teleprompter() {
     useEffect(() => {
         if (voiceError) {
             if (voiceError.message.includes("Seems like you're in another call")) {
-                Alert.alert("Mode Unavailable", voiceError.message);
+                Alert.alert(i18n.t('modeUnavailable'), voiceError.message);
                 if (scrollMode === 'auto') {
                     setScrollMode('fixed');
                 }
@@ -473,12 +474,12 @@ export default function Teleprompter() {
 
         if (isRecording) {
             Alert.alert(
-                'Stop Recording?',
-                'Going back will stop and save your current recording.',
+                i18n.t('stopRecordingTitle'),
+                i18n.t('stopRecordingMessage'),
                 [
-                    { text: 'Cancel', style: 'cancel' },
+                    { text: i18n.t('cancel'), style: 'cancel' },
                     {
-                        text: 'Stop & Go Back', style: 'destructive', onPress: () => {
+                        text: i18n.t('stopAndGoBack'), style: 'destructive', onPress: () => {
                             setIsRecording(false);
                             router.back();
                         }
@@ -528,11 +529,11 @@ export default function Teleprompter() {
 
         if (!camGranted || !micGranted) {
             Alert.alert(
-                'Permissions Required',
-                'Camera and microphone permissions are required. Please enable them in settings.',
+                i18n.t('permissionsRequired'),
+                i18n.t('permissionsMessage'),
                 [
-                    { text: 'Cancel', style: 'cancel' },
-                    { text: 'Open Settings', onPress: () => Linking.openSettings() }
+                    { text: i18n.t('cancel'), style: 'cancel' },
+                    { text: i18n.t('openSettings'), onPress: () => Linking.openSettings() }
                 ]
             );
         }
@@ -550,19 +551,19 @@ export default function Teleprompter() {
         }
 
         if (!activeDevice) {
-            Alert.alert('Error', 'Camera device not found.');
+            Alert.alert(i18n.t('error'), i18n.t('cameraNotFound'));
             return;
         }
 
         if (isCallActive) {
-            Alert.alert("Recording Unavailable", "Seems like you're in another call! Recording unavailable during calls.");
+            Alert.alert(i18n.t('recordingUnavailable'), i18n.t('callActiveError'));
             return;
         }
 
         if (!hasMicPermission) {
             const micGranted = await requestMicPermission();
             if (!micGranted) {
-                Alert.alert('Permission needed', 'Microphone permission is required.');
+                Alert.alert(i18n.t('permissionNeeded'), i18n.t('micPermissionRequired'));
                 return;
             }
         }
@@ -570,12 +571,12 @@ export default function Teleprompter() {
             const mediaResponse = await requestMediaPermission();
             if (!mediaResponse.granted) {
                 if (!mediaResponse.canAskAgain) {
-                    Alert.alert('Permission needed', 'Media Library permission is required to save videos. Please enable it in settings.', [
-                        { text: 'Cancel', style: 'cancel' },
-                        { text: 'Open Settings', onPress: () => Linking.openSettings() }
+                    Alert.alert(i18n.t('permissionNeeded'), i18n.t('mediaPermissionRequiredSettings'), [
+                        { text: i18n.t('cancel'), style: 'cancel' },
+                        { text: i18n.t('openSettings'), onPress: () => Linking.openSettings() }
                     ]);
                 } else {
-                    Alert.alert('Permission needed', 'Media Library permission is required to save videos.');
+                    Alert.alert(i18n.t('permissionNeeded'), i18n.t('mediaPermissionRequired'));
                 }
                 return;
             }
@@ -586,17 +587,17 @@ export default function Teleprompter() {
             cameraRef.current?.startRecording({
                 onRecordingFinished: (video) => {
                     MediaLibrary.saveToLibraryAsync(video.path);
-                    Alert.alert('Saved', 'Video saved to your gallery!');
+                    Alert.alert(i18n.t('saved'), i18n.t('videoSaved'));
                 },
                 onRecordingError: (error) => {
                     console.error("Recording error:", error);
-                    Alert.alert('Error', 'Failed to record video.');
+                    Alert.alert(i18n.t('error'), i18n.t('recordingFailed'));
                     setIsRecording(false);
                 }
             });
         } catch (error) {
             console.error("Recording error:", error);
-            Alert.alert('Error', 'Failed to start recording.');
+            Alert.alert(i18n.t('error'), i18n.t('startRecordingFailed'));
             setIsRecording(false);
         }
     };
@@ -605,9 +606,9 @@ export default function Teleprompter() {
     if (!activeScript) {
         return (
             <View className="flex-1 bg-black items-center justify-center p-6">
-                <Text className="text-white text-center mb-6 text-lg">No script selected.</Text>
+                <Text className="text-white text-center mb-6 text-lg">{i18n.t('noScriptSelected')}</Text>
                 <TouchableOpacity className="bg-blue-600 p-4 rounded-xl" onPress={() => router.replace('/')}>
-                    <Text className="text-white font-bold">Go Back</Text>
+                    <Text className="text-white font-bold">{i18n.t('goBack')}</Text>
                 </TouchableOpacity>
             </View>
         );
@@ -617,9 +618,9 @@ export default function Teleprompter() {
     if ((!hasCamPermission || !hasMicPermission) && activeScript?.mode === 'phone') {
         return (
             <View className="flex-1 bg-black items-center justify-center p-6">
-                <Text className="text-white text-center mb-6 text-lg">We need your permission to show the camera and microphone for Phone Recording mode.</Text>
+                <Text className="text-white text-center mb-6 text-lg">{i18n.t('permissionRequestMessage')}</Text>
                 <TouchableOpacity className="bg-blue-600 p-4 rounded-xl" onPress={handleRequestPermission}>
-                    <Text className="text-white font-bold">Grant Permissions</Text>
+                    <Text className="text-white font-bold">{i18n.t('grantPermissions')}</Text>
                 </TouchableOpacity>
             </View>
         );
@@ -650,7 +651,7 @@ export default function Teleprompter() {
                 {/* Fallback if no device */}
                 {activeScript?.mode === 'phone' && !activeDevice && (
                     <View style={[StyleSheet.absoluteFill, { backgroundColor: 'black', justifyContent: 'center', alignItems: 'center' }]}>
-                        <Text className="text-white">Camera not available</Text>
+                        <Text className="text-white">{i18n.t('cameraUnavailable')}</Text>
                     </View>
                 )}
 
@@ -661,7 +662,7 @@ export default function Teleprompter() {
                         onPress={handleBack}
                     >
                         <ChevronLeft color="white" size={20} />
-                        <Text className="text-white font-bold">Back</Text>
+                        <Text className="text-white font-bold">{i18n.t('back')}</Text>
                     </TouchableOpacity>
                 </View>
 
@@ -673,7 +674,7 @@ export default function Teleprompter() {
                                 <TextInput
                                     ref={searchInputRef}
                                     style={{ color: 'white', fontSize: 15, flex: 1, paddingVertical: 0 }}
-                                    placeholder="Search"
+                                    placeholder={i18n.t('search')}
                                     placeholderTextColor="rgba(255,255,255,0.4)"
                                     value={searchQuery}
                                     onChangeText={handleSearch}
@@ -713,8 +714,8 @@ export default function Teleprompter() {
                 {
                     isListening && (
                         <View className="absolute top-24 left-6 right-6 bg-black/50 p-2 rounded z-40 pointer-events-none">
-                            <Text className="text-yellow-400 text-xs font-mono">Listening: {transcript}</Text>
-                            {voiceError && <Text className="text-red-500 text-xs">Error: {voiceError.message}</Text>}
+                            <Text className="text-yellow-400 text-xs font-mono">{i18n.t('listening')}: {transcript}</Text>
+                            {voiceError && <Text className="text-red-500 text-xs">{i18n.t('error')}: {voiceError.message}</Text>}
                         </View>
                     )
                 }
@@ -751,7 +752,7 @@ export default function Teleprompter() {
                                     >
                                         {(() => {
                                             if (scriptSegments.length === 0) {
-                                                return activeScript?.plain_text || "No script content provided.";
+                                                return activeScript?.plain_text || i18n.t('noScriptContent');
                                             }
 
                                             // Build a set of highlighted character ranges from search matches
@@ -899,8 +900,8 @@ export default function Teleprompter() {
                             <View className="items-center">
                                 <Text className="text-white text-[10px] font-bold opacity-50">
                                     {scrollMode === 'wpm'
-                                        ? `${speedToWpm(normalizedToSpeed(displayValue))} WPM`
-                                        : `SPEED: ${normalizedToSpeed(displayValue).toFixed(1)}x`}
+                                        ? `${speedToWpm(normalizedToSpeed(displayValue))} ${i18n.t('wpm')}`
+                                        : `${i18n.t('speed')}: ${normalizedToSpeed(displayValue).toFixed(1)}x`}
                                 </Text>
                             </View>
                             <View className={`flex-row items-center justify-between ${isLandscape ? "" : "mb-2"}`}>
@@ -909,7 +910,7 @@ export default function Teleprompter() {
                                         {Math.round(WPM_MIN)}
                                     </Animated.Text>
                                     <Animated.Text style={fixedLabelStyle} className="absolute text-white text-[10px] font-bold">
-                                        SLOW
+                                        {i18n.t('slow')}
                                     </Animated.Text>
                                 </View>
                                 <View className="flex-1 mx-4">
@@ -938,7 +939,7 @@ export default function Teleprompter() {
                                         {Math.round(WPM_MAX)}
                                     </Animated.Text>
                                     <Animated.Text style={fixedLabelStyle} className="absolute text-white text-[10px] font-bold">
-                                        FAST
+                                        {i18n.t('fast')}
                                     </Animated.Text>
                                 </View>
                             </View>
@@ -957,7 +958,7 @@ export default function Teleprompter() {
                                     className="flex-1 py-1.5 rounded-lg items-center"
                                 >
                                     <Text style={{ color: isActive ? '#ffffff' : '#71717a' }} className="text-[10px] font-bold">
-                                        {mode === 'auto' ? 'Auto (AI)' : mode === 'fixed' ? 'Fixed' : 'WPM'}
+                                        {mode === 'auto' ? i18n.t('autoAi') : mode === 'fixed' ? i18n.t('fixed') : i18n.t('wpm')}
                                     </Text>
                                 </TouchableOpacity>
                             );
@@ -994,7 +995,7 @@ export default function Teleprompter() {
                             ) : (
                                 <View className="items-center justify-center px-2">
                                     <Text className={`text-orange-400 font-bold text-[10px] text-center ${!isReady ? 'opacity-50' : ''}`}>
-                                        {isReady ? "AI SCROLLING\nACTIVE" : "AI SCROLLING\nLOADING..."}
+                                        {isReady ? i18n.t('aiScrollingActive') : i18n.t('aiScrollingLoading')}
                                     </Text>
                                 </View>
                             )}

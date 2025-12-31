@@ -7,6 +7,7 @@ import { SQLiteProvider } from 'expo-sqlite';
 import '../global.css';
 import { StatusBar } from 'expo-status-bar';
 import * as ScreenOrientation from 'expo-screen-orientation';
+import i18n from '../utils/i18n';
 
 export default function RootLayout() {
     const colorScheme = useColorScheme();
@@ -35,10 +36,10 @@ export default function RootLayout() {
                     },
                 }}
             >
-                <Stack.Screen name="index" options={{ title: 'Home', headerShown: false, }} />
-                <Stack.Screen name="editor" options={{ title: 'Script Editor' }} />
-                <Stack.Screen name="setup" options={{ title: 'Setup' }} />
-                <Stack.Screen name="recents" options={{ title: 'Recent Scripts' }} />
+                <Stack.Screen name="index" options={{ title: i18n.t('home'), headerShown: false, }} />
+                <Stack.Screen name="editor" options={{ title: i18n.t('scriptEditor') }} />
+                <Stack.Screen name="setup" options={{ title: i18n.t('setup') }} />
+                <Stack.Screen name="recents" options={{ title: i18n.t('recentScripts') }} />
                 <Stack.Screen name="prompter" options={{ headerShown: false }} />
             </Stack>
         </SQLiteProvider>
