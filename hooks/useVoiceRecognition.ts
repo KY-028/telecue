@@ -17,6 +17,9 @@ export function useVoiceRecognition() {
 
     useEffect(() => {
         // Retrieve API Key
+        // TODO: SECURITY WARNING: The API key is exposed in the client-side bundle.
+        // For production, it is highly recommended to use a backend proxy to handle authentication
+        // and keep the API key secret.
         const apiKey = process.env.EXPO_PUBLIC_ASSEMBLYAI_API_KEY;
         console.log("DEBUG: API Key loaded from env:", apiKey ? `${apiKey.substring(0, 4)}...***` : "undefined");
 

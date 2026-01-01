@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { View, Text, TouchableOpacity, Dimensions, ScrollView, StyleSheet, Alert, Animated as RNAnimated, Linking, useWindowDimensions, TextInput, AppState } from 'react-native';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { View, Text, TouchableOpacity, Dimensions, ScrollView, StyleSheet, Alert, Animated as RNAnimated, Linking, useWindowDimensions, TextInput, AppState, Modal, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
 import { GestureDetector, Gesture, GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useRouter } from 'expo-router';
 import { useIsFocused } from '@react-navigation/native';
@@ -9,12 +9,14 @@ import { WPM_MIN, WPM_MAX } from '../constants/prompter';
 import { speedToWpm, speedToNormalized, normalizedToSpeed } from '../utils/speed';
 import * as Brightness from 'expo-brightness';
 import * as MediaLibrary from 'expo-media-library';
+import * as SecureStore from 'expo-secure-store';
 import Animated, {
     useSharedValue,
     useAnimatedStyle,
     withTiming,
     Easing,
     cancelAnimation,
+    runOnJS,
 } from 'react-native-reanimated';
 import { Play, Pause, FastForward, Rewind, Check, ChevronLeft, SwitchCamera, Search, X, ChevronUp, ChevronDown } from 'lucide-react-native';
 import Slider from '@react-native-community/slider';
@@ -23,6 +25,14 @@ import { setAudioModeAsync } from 'expo-audio';
 import { parseHtmlToStyledSegments, parseHtmlToStyledWords, StyledSegment, StyledWord } from '../utils/htmlParser';
 import i18n from '../utils/i18n';
 
+
+// --- Helper Types for Chunked Rendering ---
+interface TextBlock {
+    id: string;
+    segments: StyledSegment[];
+    startIndex: number; // Global start index in plain text
+    endIndex: number;   // Global end index in plain text
+}
 
 export default function Teleprompter() {
     // --- Hooks & Store ---
@@ -73,6 +83,44 @@ export default function Teleprompter() {
     const [allMatches, setAllMatches] = useState<{ start: number; length: number }[]>([]);
     const [matchCursor, setMatchCursor] = useState(0);
 
+    // --- Invite Code State ---
+    const [showInviteModal, setShowInviteModal] = useState(false);
+    const [inviteCodeInput, setInviteCodeInput] = useState('');
+
+    const handleModeChange = async (mode: 'auto' | 'fixed' | 'wpm') => {
+        if (mode === 'auto') {
+            try {
+                const hasEntered = await SecureStore.getItemAsync('has_entered_invite_code');
+                if (hasEntered === 'true') {
+                    setScrollMode('auto');
+                } else {
+                    setInviteCodeInput('');
+                    setShowInviteModal(true);
+                }
+            } catch (error) {
+                console.error("Error checking invite code:", error);
+                setShowInviteModal(true);
+            }
+        } else {
+            setScrollMode(mode);
+        }
+    };
+
+    const verifyInviteCode = async () => {
+        if (inviteCodeInput === process.env.EXPO_PUBLIC_INVITE_CODE) {
+            try {
+                await SecureStore.setItemAsync('has_entered_invite_code', 'true');
+                setShowInviteModal(false);
+                setScrollMode('auto');
+            } catch (error) {
+                console.error("Error saving invite code status:", error);
+                Alert.alert("Error", "Could not save verification status.");
+            }
+        } else {
+            Alert.alert("Invalid Code", "The invite code you entered is incorrect.");
+        }
+    };
+
     // Auto-Start Listening when in 'auto' mode
     useEffect(() => {
         if (scrollMode === 'auto') {
@@ -94,48 +142,106 @@ export default function Teleprompter() {
         };
     }, [scrollMode]);
 
-    // --- Alignment State ---
+    // --- Alignment State & Loading ---
     const [matchedIndex, setMatchedIndex] = useState(-1);
     const lastMatchIndexRef = useRef(0);
     const [scriptWords, setScriptWords] = useState<StyledWord[]>([]);  // For AI scrolling
-    const [scriptSegments, setScriptSegments] = useState<StyledSegment[]>([]);  // For display
+    // Replaced plain scriptSegments with scriptBlocks for chunked rendering
+    const [scriptBlocks, setScriptBlocks] = useState<TextBlock[]>([]);
     const [scriptPlainText, setScriptPlainText] = useState('');  // For search
     const [sectionStartIndices, setSectionStartIndices] = useState<number[]>([]);
+    const [isLoadingScript, setIsLoadingScript] = useState(true);
 
-    // Pre-calculate script segments, words, and plain text
+    // Pre-calculate script segments, words, and plain text (ASYNC for performance)
     useEffect(() => {
-        const contentToParse = activeScript?.html_content || activeScript?.content;
-        if (contentToParse) {
-            // Parse for display (preserves exact spacing)
-            const { segments, plainText } = parseHtmlToStyledSegments(contentToParse);
-            setScriptSegments(segments);
-            setScriptPlainText(plainText);
+        const prepareScript = async () => {
+            if (!activeScript) return;
 
-            // Parse for AI scrolling (word-based)
-            const parsedWords = parseHtmlToStyledWords(contentToParse);
-            setScriptWords(parsedWords);
+            setIsLoadingScript(true);
 
-            // Legacy section logic (using plain text approximation for now)
-            const rawContent = (activeScript?.plain_text || contentToParse || '').replace(/<[^>]*>/g, '').trim();
-            const lines = rawContent.split('\n');
-            const starts: number[] = [0];
-            let currentWordTotal = 0;
+            // Yield to UI thread to allow navigation to complete and showing loading spinner
+            await new Promise(resolve => setTimeout(resolve, 100));
 
-            for (let i = 0; i < lines.length - 1; i++) {
-                const lineWords = lines[i].trim().split(/\s+/).filter(w => w.length > 0);
-                currentWordTotal += lineWords.length;
+            const contentToParse = activeScript?.html_content || activeScript?.content;
+            if (contentToParse) {
+                // 1. Parse all segments first (preserves exact spacing)
+                const { segments, plainText } = parseHtmlToStyledSegments(contentToParse);
+                setScriptPlainText(plainText);
 
-                // If this line is empty and previous or next line is also empty/significant
-                if (lines[i].trim() === '' && lines[i + 1].trim() !== '') {
-                    starts.push(currentWordTotal);
+                // 2. Break segments into blocks (paragraphs)
+                // This is crucial for rendering performance and avoiding texture limits
+                const blocks: TextBlock[] = [];
+                let currentBlockSegments: StyledSegment[] = [];
+                let currentBlockStart = 0;
+                let currentBlockLength = 0;
+
+                segments.forEach((seg, idx) => {
+                    // Check if segment contains newlines which might signal block breaks
+                    // For now, let's group by "paragraphs" roughly, or just chunk by length/count.
+                    // A simple and robust way is to break on every double newline or strictly ensure
+                    // blocks don't get too massive. 
+                    // Let's rely on NEWLINE segments as natural split points if present,
+                    // or accumulate up to a reasonable character count (e.g., 1000 chars) if no newlines.
+
+                    currentBlockSegments.push(seg);
+                    currentBlockLength += seg.text.length;
+
+                    const isNewline = seg.text === '\n';
+                    const isLongEnough = currentBlockLength > 500; // ~500 chars per block is very safe
+
+                    if (isNewline || (isLongEnough && seg.text.endsWith(' '))) {
+                        // Flush block
+                        blocks.push({
+                            id: `block-${blocks.length}`,
+                            segments: currentBlockSegments,
+                            startIndex: currentBlockStart,
+                            endIndex: currentBlockStart + currentBlockLength
+                        });
+                        currentBlockStart += currentBlockLength;
+                        currentBlockSegments = [];
+                        currentBlockLength = 0;
+                    }
+                });
+
+                // Flush remaining
+                if (currentBlockSegments.length > 0) {
+                    blocks.push({
+                        id: `block-${blocks.length}`,
+                        segments: currentBlockSegments,
+                        startIndex: currentBlockStart,
+                        endIndex: currentBlockStart + currentBlockLength
+                    });
                 }
-            }
-            const uniqueStarts = Array.from(new Set(starts)).sort((a, b) => a - b);
-            setSectionStartIndices(uniqueStarts);
+                setScriptBlocks(blocks);
 
-            setMatchedIndex(-1);
-            lastMatchIndexRef.current = 0;
-        }
+                // 3. Parse for AI scrolling (word-based)
+                const parsedWords = parseHtmlToStyledWords(contentToParse);
+                setScriptWords(parsedWords);
+
+                // 4. Legacy section logic
+                const rawContent = (activeScript?.plain_text || contentToParse || '').replace(/<[^>]*>/g, '').trim();
+                const lines = rawContent.split('\n');
+                const starts: number[] = [0];
+                let currentWordTotal = 0;
+
+                for (let i = 0; i < lines.length - 1; i++) {
+                    const lineWords = lines[i].trim().split(/\s+/).filter(w => w.length > 0);
+                    currentWordTotal += lineWords.length;
+
+                    if (lines[i].trim() === '' && lines[i + 1].trim() !== '') {
+                        starts.push(currentWordTotal);
+                    }
+                }
+                const uniqueStarts = Array.from(new Set(starts)).sort((a, b) => a - b);
+                setSectionStartIndices(uniqueStarts);
+
+                setMatchedIndex(-1);
+                lastMatchIndexRef.current = 0;
+            }
+            setIsLoadingScript(false);
+        };
+
+        prepareScript();
     }, [activeScript?.html_content, activeScript?.content]);
 
     // --- Phase 3: Inactivity Timeout ---
@@ -442,12 +548,11 @@ export default function Teleprompter() {
         })
         .onEnd(() => {
             if (scrollMode === 'auto') {
-                // In AI mode, we need to update our search index based on where we are now
-                // to allow the AI to "skip" or resume correctly.
+                // In AI mode, we update search index based on scroll position
+                // (using simplistic progress calc for now)
                 const progress = Math.abs(scrollY.value / (contentHeight || 1));
                 const wordIndex = Math.floor(progress * scriptWords.length);
 
-                // Find nearest section start at or before the current word index
                 let targetIndex = 0;
                 if (sectionStartIndices.length > 0) {
                     for (const start of sectionStartIndices) {
@@ -495,7 +600,6 @@ export default function Teleprompter() {
         if (scrollMode !== 'auto') {
             setScrollMode('fixed');
         } else {
-            // In AI mode, we reset tracking so it picks up from the start again
             setMatchedIndex(-1);
             lastMatchIndexRef.current = 0;
         }
@@ -507,7 +611,6 @@ export default function Teleprompter() {
         if (scrollMode !== 'auto') {
             setScrollMode('fixed');
         } else {
-            // In AI mode, we move tracking to the end
             const finalIndex = scriptWords.length - 1;
             setMatchedIndex(finalIndex);
             lastMatchIndexRef.current = finalIndex;
@@ -622,6 +725,16 @@ export default function Teleprompter() {
                 <TouchableOpacity className="bg-blue-600 p-4 rounded-xl" onPress={handleRequestPermission}>
                     <Text className="text-white font-bold">{i18n.t('grantPermissions')}</Text>
                 </TouchableOpacity>
+            </View>
+        );
+    }
+
+    // --- Loading Screen ---
+    if (isLoadingScript) {
+        return (
+            <View className="flex-1 bg-black items-center justify-center space-y-4">
+                <ActivityIndicator size="large" color="#ea580c" />
+                <Text className="text-white text-lg font-medium">{i18n.t('preparingScript') || "Preparing Script..."}</Text>
             </View>
         );
     }
@@ -746,123 +859,142 @@ export default function Teleprompter() {
                                     }}
                                     style={{ width: '100%' }}
                                 >
-                                    <Text
-                                        className="text-white font-bold text-center"
-                                        style={{ fontSize: (activeScript?.font_size || 3) * 8 + 16 }}
-                                    >
-                                        {(() => {
-                                            if (scriptSegments.length === 0) {
-                                                return activeScript?.plain_text || i18n.t('noScriptContent');
-                                            }
+                                    {scriptBlocks.length === 0 ? (
+                                        <Text className="text-white font-bold text-center" style={{ fontSize: (activeScript?.font_size || 3) * 8 + 16 }}>
+                                            {activeScript?.plain_text || i18n.t('noScriptContent')}
+                                        </Text>
+                                    ) : (
+                                        // Render chunks separately to avoid texture limits
+                                        scriptBlocks.map((block) => {
+                                            // Calculate global offsets for this block
+                                            const blockStart = block.startIndex;
+                                            const blockEnd = block.endIndex;
 
-                                            // Build a set of highlighted character ranges from search matches
-                                            const highlightRanges: { start: number; end: number; isActive: boolean }[] = [];
+                                            // Determine highlights relevant to this block
+                                            const relevantHighlights: { start: number; end: number; isActive: boolean }[] = [];
                                             if (searchQuery && allMatches.length > 0) {
                                                 allMatches.forEach((match, idx) => {
-                                                    highlightRanges.push({
-                                                        start: match.start,
-                                                        end: match.start + match.length,
-                                                        isActive: idx === matchCursor
-                                                    });
+                                                    const matchStart = match.start;
+                                                    const matchEnd = match.start + match.length;
+                                                    // Check overlap
+                                                    if (matchEnd > blockStart && matchStart < blockEnd) {
+                                                        // Clip to block boundaries
+                                                        relevantHighlights.push({
+                                                            start: Math.max(matchStart, blockStart),
+                                                            end: Math.min(matchEnd, blockEnd),
+                                                            isActive: idx === matchCursor
+                                                        });
+                                                    }
                                                 });
                                             }
 
-                                            // Calculate AI matched character position (approximate)
+                                            // Determine AI Highlight position relative to this block
+                                            // aiMatchedCharPos is global 
                                             let aiMatchedCharPos = -1;
                                             if (matchedIndex >= 0 && scriptWords.length > 0) {
-                                                // Count characters up to the matched word index
                                                 let charCount = 0;
                                                 for (let i = 0; i <= matchedIndex && i < scriptWords.length; i++) {
                                                     charCount += scriptWords[i].word.length;
-                                                    if (i < matchedIndex) charCount += 1; // space between words
+                                                    if (i < matchedIndex) charCount += 1; // space
                                                 }
                                                 aiMatchedCharPos = charCount;
                                             }
 
-                                            // Render segments with exact text preservation
-                                            return scriptSegments.map((segment, segIdx) => {
-                                                const { text, style: baseStyle, startIndex, endIndex } = segment;
+                                            const blockFontSize = (activeScript?.font_size || 3) * 8 + 16;
 
-                                                // Check if this segment overlaps with any search highlight
-                                                const overlappingHighlights = highlightRanges.filter(
-                                                    h => h.start < endIndex && h.end > startIndex
-                                                );
+                                            return (
+                                                <Text
+                                                    key={block.id}
+                                                    className="text-white font-bold text-center"
+                                                    style={{ fontSize: blockFontSize }}
+                                                >
+                                                    {block.segments.map((segment, segIdx) => {
+                                                        const globalSegStart = blockStart + (segment.startIndex - block.segments[0].startIndex);
+                                                        // Wait, segments have global start indices already from the parser?
+                                                        // No, parser returns 0-based index relative to the passed string.
+                                                        // We passed the ONE big string to parser first, then sliced segments.
+                                                        // So segment.startIndex IS global.
 
-                                                // Check if this segment is matched by AI
-                                                const isMatchedByAI = aiMatchedCharPos >= 0 && startIndex < aiMatchedCharPos;
+                                                        const { text, style: baseStyle, startIndex, endIndex } = segment;
 
-                                                if (overlappingHighlights.length === 0) {
-                                                    // No search highlights, render segment as-is
-                                                    return (
-                                                        <Text
-                                                            key={segIdx}
-                                                            style={[
-                                                                baseStyle,
-                                                                { color: isMatchedByAI ? '#4ade80' : (baseStyle.color || 'white') }
-                                                            ]}
-                                                        >
-                                                            {text}
-                                                        </Text>
-                                                    );
-                                                }
+                                                        // Check search highlights overlap
+                                                        const overlappingHighlights = relevantHighlights.filter(
+                                                            h => h.start < endIndex && h.end > startIndex
+                                                        );
 
-                                                // Split segment by highlight boundaries
-                                                const parts: { text: string; highlight: boolean; isActive: boolean; charStart: number }[] = [];
-                                                let currentPos = startIndex;
+                                                        // Check AI match
+                                                        const isMatchedByAI = aiMatchedCharPos >= 0 && startIndex < aiMatchedCharPos;
 
-                                                // Get all boundary points within this segment
-                                                const boundaries = new Set<number>();
-                                                boundaries.add(startIndex);
-                                                boundaries.add(endIndex);
-                                                overlappingHighlights.forEach(h => {
-                                                    if (h.start > startIndex && h.start < endIndex) boundaries.add(h.start);
-                                                    if (h.end > startIndex && h.end < endIndex) boundaries.add(h.end);
-                                                });
-                                                const sortedBoundaries = Array.from(boundaries).sort((a, b) => a - b);
-
-                                                for (let i = 0; i < sortedBoundaries.length - 1; i++) {
-                                                    const partStart = sortedBoundaries[i];
-                                                    const partEnd = sortedBoundaries[i + 1];
-                                                    const partText = text.slice(partStart - startIndex, partEnd - startIndex);
-
-                                                    // Check if this part is highlighted
-                                                    const matchingHighlight = overlappingHighlights.find(
-                                                        h => h.start <= partStart && h.end >= partEnd
-                                                    );
-
-                                                    parts.push({
-                                                        text: partText,
-                                                        highlight: !!matchingHighlight,
-                                                        isActive: matchingHighlight?.isActive || false,
-                                                        charStart: partStart
-                                                    });
-                                                }
-
-                                                return (
-                                                    <Text key={segIdx}>
-                                                        {parts.map((part, partIdx) => {
-                                                            const partIsAIMatched = aiMatchedCharPos >= 0 && part.charStart < aiMatchedCharPos;
+                                                        if (overlappingHighlights.length === 0) {
                                                             return (
                                                                 <Text
-                                                                    key={partIdx}
+                                                                    key={segIdx}
                                                                     style={[
                                                                         baseStyle,
-                                                                        {
-                                                                            color: partIsAIMatched ? '#4ade80' : (baseStyle.color || 'white'),
-                                                                            backgroundColor: part.highlight ? '#f97316' : 'transparent',
-                                                                            opacity: part.highlight && !part.isActive ? 0.75 : 1
-                                                                        }
+                                                                        { color: isMatchedByAI ? '#4ade80' : (baseStyle.color || 'white') }
                                                                     ]}
                                                                 >
-                                                                    {part.text}
+                                                                    {text}
                                                                 </Text>
                                                             );
-                                                        })}
-                                                    </Text>
-                                                );
-                                            });
-                                        })()}
-                                    </Text>
+                                                        }
+
+                                                        // Handle text splitting for search highlights
+                                                        const parts: { text: string; highlight: boolean; isActive: boolean; charStart: number }[] = [];
+
+                                                        const boundaries = new Set<number>();
+                                                        boundaries.add(startIndex);
+                                                        boundaries.add(endIndex);
+                                                        overlappingHighlights.forEach(h => {
+                                                            if (h.start > startIndex && h.start < endIndex) boundaries.add(h.start);
+                                                            if (h.end > startIndex && h.end < endIndex) boundaries.add(h.end);
+                                                        });
+                                                        const sortedBoundaries = Array.from(boundaries).sort((a, b) => a - b);
+
+                                                        for (let i = 0; i < sortedBoundaries.length - 1; i++) {
+                                                            const partStart = sortedBoundaries[i];
+                                                            const partEnd = sortedBoundaries[i + 1];
+                                                            const partText = text.slice(partStart - startIndex, partEnd - startIndex);
+
+                                                            const matchingHighlight = overlappingHighlights.find(
+                                                                h => h.start <= partStart && h.end >= partEnd
+                                                            );
+
+                                                            parts.push({
+                                                                text: partText,
+                                                                highlight: !!matchingHighlight,
+                                                                isActive: matchingHighlight?.isActive || false,
+                                                                charStart: partStart
+                                                            });
+                                                        }
+
+                                                        return (
+                                                            <Text key={segIdx}>
+                                                                {parts.map((part, partIdx) => {
+                                                                    const partIsAIMatched = aiMatchedCharPos >= 0 && part.charStart < aiMatchedCharPos;
+                                                                    return (
+                                                                        <Text
+                                                                            key={partIdx}
+                                                                            style={[
+                                                                                baseStyle,
+                                                                                {
+                                                                                    color: partIsAIMatched ? '#4ade80' : (baseStyle.color || 'white'),
+                                                                                    backgroundColor: part.highlight ? '#f97316' : 'transparent',
+                                                                                    opacity: part.highlight && !part.isActive ? 0.75 : 1
+                                                                                }
+                                                                            ]}
+                                                                        >
+                                                                            {part.text}
+                                                                        </Text>
+                                                                    );
+                                                                })}
+                                                            </Text>
+                                                        );
+                                                    })}
+                                                </Text>
+                                            );
+                                        })
+                                    )}
                                 </View>
 
                                 {/* Extra padding at bottom */}
@@ -953,7 +1085,7 @@ export default function Teleprompter() {
                             return (
                                 <TouchableOpacity
                                     key={mode}
-                                    onPress={() => setScrollMode(mode)}
+                                    onPress={() => handleModeChange(mode)}
                                     style={{ backgroundColor: isActive ? '#3f3f46' : 'transparent' }}
                                     className="flex-1 py-1.5 rounded-lg items-center"
                                 >
@@ -1013,6 +1145,51 @@ export default function Teleprompter() {
                         </TouchableOpacity>
                     </View>
                 </View>
+
+                {/* Invite Code Modal */}
+                <Modal
+                    visible={showInviteModal}
+                    transparent
+                    animationType="fade"
+                    onRequestClose={() => setShowInviteModal(false)}
+                >
+                    <KeyboardAvoidingView
+                        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                        className="flex-1 items-center justify-center bg-black/80"
+                    >
+                        <View className="bg-zinc-900 p-6 rounded-2xl w-[80%] max-w-sm border border-white/10">
+                            <Text className="text-white text-xl font-bold mb-2 text-center">Enter Invite Code</Text>
+                            <Text className="text-zinc-400 text-sm mb-6 text-center">
+                                This feature is currently in early access. Please enter your invite code to continue.
+                            </Text>
+
+                            <TextInput
+                                className="bg-zinc-800 text-white p-4 rounded-xl mb-6 border border-white/10"
+                                placeholder="Enter code"
+                                placeholderTextColor="#71717a"
+                                value={inviteCodeInput}
+                                onChangeText={setInviteCodeInput}
+                                autoCapitalize="characters"
+                                autoCorrect={false}
+                            />
+
+                            <View className="flex-row gap-3">
+                                <TouchableOpacity
+                                    className="flex-1 bg-zinc-800 p-3 rounded-xl items-center"
+                                    onPress={() => setShowInviteModal(false)}
+                                >
+                                    <Text className="text-white font-bold">Cancel</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    className="flex-1 bg-blue-600 p-3 rounded-xl items-center"
+                                    onPress={verifyInviteCode}
+                                >
+                                    <Text className="text-white font-bold">Submit</Text>
+                                </TouchableOpacity>
+                            </View>
+                        </View>
+                    </KeyboardAvoidingView>
+                </Modal>
             </View >
         </GestureHandlerRootView >
     );

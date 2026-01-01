@@ -45,7 +45,8 @@
       ],
       "expo-screen-orientation",
       "expo-brightness",
-      "expo-localization"
+      "expo-localization",
+      "expo-secure-store"
     ],
     "extra": {
       "router": {},

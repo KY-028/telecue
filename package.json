@@ -23,6 +23,7 @@
     "expo-media-library": "~18.2.1",
     "expo-router": "~6.0.21",
     "expo-screen-orientation": "~9.0.8",
+    "expo-secure-store": "~15.0.8",
     "expo-sqlite": "~16.0.10",
     "expo-status-bar": "~3.0.9",
     "i18n-js": "^4.5.1",

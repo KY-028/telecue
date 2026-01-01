@@ -5,6 +5,7 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { useScriptStore } from '../store/useScriptStore';
 import { FileText, ChevronRight } from 'lucide-react-native';
 import i18n from '../utils/i18n';
+import { parseHtmlToStyledSegments } from '../utils/htmlParser';
 
 // Helper to extract displayable text from content
 const getDisplayableText = (script: Script): string => {
@@ -33,9 +34,10 @@ const getDisplayableText = (script: Script): string => {
         }
     }
 
-    // Fallback: Strip HTML tags if content looks like HTML
+    // Fallback: Use the shared HTML parser to extract plain text safely
     if (script.content) {
-        const stripped = script.content.replace(/<[^>]*>/g, '').trim();
+        const { plainText } = parseHtmlToStyledSegments(script.content);
+        const stripped = plainText.trim();
         // Don't show raw JSON
         if (!stripped.startsWith('{')) {
             return stripped;

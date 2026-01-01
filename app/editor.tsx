@@ -127,15 +127,47 @@ export default function ScriptEditor() {
     // Filter save logic for reuse
     const saveScript = async (currentScript: any) => {
         if (!currentScript) return;
+
+        // Security & Validation
+        const MAX_TITLE_LENGTH = 255;
+        const MAX_CONTENT_LENGTH = 1000000; // ~1MB
+
+        if (currentScript.title && currentScript.title.length > MAX_TITLE_LENGTH) {
+            setToastMessage(i18n.t('error') + ": Title too long");
+            return;
+        }
+
+        // Sanitize numeric inputs to prevent boundary issues
+        const fontSize = Math.max(1, Math.min(Number(currentScript.font_size) || 3, 20));
+        const margin = Math.max(0, Math.min(Number(currentScript.margin) || 20, 200));
+        const speed = Math.max(0.1, Math.min(Number(currentScript.speed) || 1, 10));
+
         try {
             // Get latest content from editor directly to ensure sync before save
             const json = await editor.getJSON();
             const content = JSON.stringify(json);
 
+            if (content.length > MAX_CONTENT_LENGTH) {
+                setToastMessage(i18n.t('error') + ": Content too large");
+                return;
+            }
+
             if (currentScript.id) {
                 await db.runAsync(
-                    'UPDATE scripts SET title = ?, content = ?, plain_text = ?, html_content = ?, last_modified = CURRENT_TIMESTAMP WHERE id = ?',
-                    [currentScript.title, content, currentScript.plain_text || '', currentScript.html_content || '', currentScript.id]
+                    'UPDATE scripts SET title = ?, content = ?, plain_text = ?, html_content = ?, font_size = ?, margin = ?, speed = ?, is_mirrored_h = ?, is_mirrored_v = ?, mode = ?, last_modified = CURRENT_TIMESTAMP WHERE id = ?',
+                    [
+                        currentScript.title,
+                        content,
+                        currentScript.plain_text || '',
+                        currentScript.html_content || '',
+                        fontSize,
+                        margin,
+                        speed,
+                        currentScript.is_mirrored_h ? 1 : 0,
+                        currentScript.is_mirrored_v ? 1 : 0,
+                        currentScript.mode,
+                        currentScript.id
+                    ]
                 );
                 setToastMessage(i18n.t('scriptSaved'));
             } else {
@@ -151,9 +183,9 @@ export default function ScriptEditor() {
                         content || '',
                         currentScript.plain_text || '',
                         currentScript.html_content || '',
-                        currentScript.font_size,
-                        currentScript.margin,
-                        currentScript.speed,
+                        fontSize,
+                        margin,
+                        speed,
                         currentScript.is_mirrored_h ? 1 : 0,
                         currentScript.is_mirrored_v ? 1 : 0,
                         currentScript.mode

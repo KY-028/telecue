@@ -87,7 +87,16 @@ const DraggableMarginPreview = ({ activeScript, updateSettings }: { activeScript
         const contentToParse = activeScript?.html_content || activeScript?.content;
         if (!contentToParse) return [];
         const { segments } = parseHtmlToStyledSegments(contentToParse);
-        return segments;
+
+        // Truncate to ~500 chars for preview to avoid texture limits
+        let charCount = 0;
+        const truncatedSegments = [];
+        for (const seg of segments) {
+            if (charCount > 500) break;
+            truncatedSegments.push(seg);
+            charCount += seg.text.length;
+        }
+        return truncatedSegments;
     }, [activeScript?.html_content, activeScript?.content]);
 
     if (!activeScript) return null;

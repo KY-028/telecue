@@ -41,3 +41,5 @@ yarn-error.*
 /ios
 /android
 .expo/
+
+googlecloudsttkey.json
