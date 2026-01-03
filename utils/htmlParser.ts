@@ -11,6 +11,8 @@ export interface StyledSegment {
 export interface StyledWord {
     word: string;
     style: TextStyle;
+    startIndex: number;
+    endIndex: number;
 }
 
 /**
@@ -156,12 +158,26 @@ export function parseHtmlToStyledWords(html: string): StyledWord[] {
         // Split segment text into words, preserving each word's style
         // For AI matching, we need individual words
         const segmentWords = segment.text.split(/(\s+)/);
+        let currentOffset = 0;
+
         for (const w of segmentWords) {
+            const wordLen = w.length;
             if (w.length > 0 && w.trim().length > 0) {
-                words.push({ word: w, style: segment.style });
+                words.push({
+                    word: w,
+                    style: segment.style,
+                    startIndex: segment.startIndex + currentOffset,
+                    endIndex: segment.startIndex + currentOffset + wordLen
+                });
             } else if (w === '\n' || (w.includes('\n'))) {
-                words.push({ word: '\n', style: {} });
+                words.push({
+                    word: '\n',
+                    style: {},
+                    startIndex: segment.startIndex + currentOffset,
+                    endIndex: segment.startIndex + currentOffset + wordLen
+                });
             }
+            currentOffset += wordLen;
         }
     }
 

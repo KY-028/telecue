@@ -23,6 +23,7 @@ import Slider from '@react-native-community/slider';
 import { useVoiceRecognition } from '../hooks/useVoiceRecognition';
 import { setAudioModeAsync } from 'expo-audio';
 import { parseHtmlToStyledSegments, parseHtmlToStyledWords, StyledSegment, StyledWord } from '../utils/htmlParser';
+import { estimateScrollY, estimateCharFromScrollY } from '../utils/layoutHelper';
 import i18n from '../utils/i18n';
 
 
@@ -92,6 +93,28 @@ export default function Teleprompter() {
             try {
                 const hasEntered = await SecureStore.getItemAsync('has_entered_invite_code');
                 if (hasEntered === 'true') {
+                    // If user has scrolled before entering AI mode, enable expanded search
+                    if (scrollY.value !== 0) {
+                        userDidScroll.value = true;
+                        // Calculate word at current scroll position
+                        const layoutConfig = {
+                            fontSize: activeScript?.font_size || 3,
+                            windowWidth,
+                            isLandscape,
+                            scriptMargin: activeScript?.margin || 0
+                        };
+                        const centerCharPos = estimateCharFromScrollY(scrollY.value, scriptPlainText, contentHeight, layoutConfig);
+                        let centerIndex = 0;
+                        for (let i = 0; i < cleanWords.length; i++) {
+                            if (cleanWords[i].charStart <= centerCharPos) {
+                                centerIndex = i;
+                            } else {
+                                break;
+                            }
+                        }
+                        lastMatchIndex.value = centerIndex;
+                        console.log(`[AI Mode] User pre-scrolled, starting at word: ${cleanWords[centerIndex]?.word}`);
+                    }
                     setScrollMode('auto');
                 } else {
                     setInviteCodeInput('');
@@ -131,7 +154,10 @@ export default function Teleprompter() {
             }
 
             setMatchedIndex(-1);
-            lastMatchIndexRef.current = 0;
+            // Only reset to beginning if user hasn't pre-scrolled
+            if (!userDidScroll.value) {
+                lastMatchIndex.value = 0;
+            }
             startListening();
         } else {
             stopListening();
@@ -143,9 +169,14 @@ export default function Teleprompter() {
     }, [scrollMode]);
 
     // --- Alignment State & Loading ---
-    const [matchedIndex, setMatchedIndex] = useState(-1);
-    const lastMatchIndexRef = useRef(0);
-    const [scriptWords, setScriptWords] = useState<StyledWord[]>([]);  // For AI scrolling
+    const [matchedIndex, setMatchedIndex] = useState(-1);  // Index into scriptWords (for rendering)
+    // IMPORTANT: Using useSharedValue instead of useRef because the pan gesture (a worklet)
+    // needs to read/write this value, and useRef gets "frozen" by Reanimated worklets.
+    // useSharedValue works across both JS thread and UI thread (worklets).
+    const lastMatchIndex = useSharedValue(0);  // Index into cleanWords (for AI matching)
+    const userDidScroll = useSharedValue(false);  // Flag: true if user scrolled, enables 30-word search window
+    const [scriptWords, setScriptWords] = useState<StyledWord[]>([]);  // ALL tokens including newlines (for rendering)
+    const [cleanWords, setCleanWords] = useState<{ word: string; charStart: number; charEnd: number; scriptWordIndex: number }[]>([]);  // Words only, no newlines (for AI matching)
     // Replaced plain scriptSegments with scriptBlocks for chunked rendering
     const [scriptBlocks, setScriptBlocks] = useState<TextBlock[]>([]);
     const [scriptPlainText, setScriptPlainText] = useState('');  // For search
@@ -218,6 +249,27 @@ export default function Teleprompter() {
                 const parsedWords = parseHtmlToStyledWords(contentToParse);
                 setScriptWords(parsedWords);
 
+                // =====================================================================
+                // CREATE CLEAN WORD LIST FOR AI MATCHING
+                // =====================================================================
+                // This is the SINGLE SOURCE OF TRUTH for AI matching coordinates.
+                // - "cleanWords" contains only real words (no newlines)
+                // - Each entry knows its character position in the original text
+                // - lastMatchIndexRef will ALWAYS be an index into this array
+                // =====================================================================
+                const cleanWordsArray: { word: string; charStart: number; charEnd: number; scriptWordIndex: number }[] = [];
+                parsedWords.forEach((w, idx) => {
+                    if (w.word.trim() !== '' && w.word !== '\n') {
+                        cleanWordsArray.push({
+                            word: w.word,
+                            charStart: w.startIndex,
+                            charEnd: w.endIndex,
+                            scriptWordIndex: idx  // So we can map back for rendering
+                        });
+                    }
+                });
+                setCleanWords(cleanWordsArray);
+
                 // 4. Legacy section logic
                 const rawContent = (activeScript?.plain_text || contentToParse || '').replace(/<[^>]*>/g, '').trim();
                 const lines = rawContent.split('\n');
@@ -236,7 +288,7 @@ export default function Teleprompter() {
                 setSectionStartIndices(uniqueStarts);
 
                 setMatchedIndex(-1);
-                lastMatchIndexRef.current = 0;
+                lastMatchIndex.value = 0;
             }
             setIsLoadingScript(false);
         };
@@ -284,36 +336,96 @@ export default function Teleprompter() {
         }
     }, [voiceError, scrollMode]);
 
-    // React to transcript updates
+    // =========================================================================
+    // AI TRANSCRIPT MATCHING - Main Logic
+    // =========================================================================
+    // This effect runs whenever the speech recognition (transcript) updates.
+    // Its job is to figure out WHERE in the script the user is currently reading.
+    //
+    // COORDINATE SYSTEM (SIMPLIFIED):
+    // - cleanWords: The ONLY array used for matching (no newlines, just real words)
+    // - lastMatchIndexRef: Index into cleanWords (NOT scriptWords!)
+    // - cleanWords[i].scriptWordIndex: Maps back to scriptWords for rendering
+    // - cleanWords[i].charStart/charEnd: For scroll position calculation
+    //
+    // FLOW:
+    // 1. Get transcript from speech recognition
+    // 2. Find matching position in cleanWords (using lastMatchIndexRef as starting point)
+    // 3. Map back to scriptWords index for green highlighting
+    // 4. Use character position for accurate scrolling
+    // =========================================================================
     useEffect(() => {
-        if (scrollMode === 'auto' && transcript && scriptWords.length > 0) {
+        if (scrollMode === 'auto' && transcript && cleanWords.length > 0) {
             const { findBestMatchIndex } = require('../utils/textAlignment');
-            // Extract plain text words for matching
-            const wordList = scriptWords.map((w: any) => w.word);
-            const matchIndex = findBestMatchIndex(wordList, transcript, lastMatchIndexRef.current);
 
-            // Guard against large jumps (more than 15 words) in the first 5 seconds of the session
-            // or if the match is too far from the current position initially.
-            const isInitialPhase = lastMatchIndexRef.current === 0;
-            if (isInitialPhase && matchIndex > 15) {
+            // Get just the word strings for matching
+            const wordStrings = cleanWords.map(w => w.word);
+
+            // Run matcher with expanded search (30 words) if user scrolled, else normal (10 words)
+            const useExpandedSearch = userDidScroll.value;
+            const newCleanIndex = findBestMatchIndex(wordStrings, transcript, lastMatchIndex.value, useExpandedSearch);
+
+            // DEBUG: Log matching info
+            console.log(`[AI Match] lastRef=${lastMatchIndex.value}, newIndex=${newCleanIndex}, expanded=${useExpandedSearch}`);
+
+            // SAFETY: Bounds check to prevent crashes
+            if (newCleanIndex < 0 || newCleanIndex >= cleanWords.length) {
+                console.warn(`[AI Match] Out of bounds: ${newCleanIndex}, max=${cleanWords.length - 1}`);
                 return;
             }
 
-            if (matchIndex !== lastMatchIndexRef.current && matchIndex >= lastMatchIndexRef.current) {
-                lastMatchIndexRef.current = matchIndex;
-                setMatchedIndex(matchIndex);
+            // Guard against large jumps at the start (only if NOT user-scrolled)
+            if (!userDidScroll.value) {
+                const isInitialPhase = lastMatchIndex.value === 0;
+                if (isInitialPhase && newCleanIndex > 15) {
+                    console.log(`[AI Match] Blocked: initial phase, jump too large (${newCleanIndex} > 15)`);
+                    return;
+                }
+            }
 
-                // Calculate scroll position
-                const progress = (matchIndex + 1) / scriptWords.length;
-                const targetY = -(progress * contentHeight);
+            // Only advance forward (or stay in place)
+            if (newCleanIndex > lastMatchIndex.value) {
+                lastMatchIndex.value = newCleanIndex;
+
+                // Reset scroll flag - voice recognition now takes precedence
+                if (userDidScroll.value) {
+                    userDidScroll.value = false;
+                    console.log(`[AI Match] User scroll handled - switching back to voice recognition`);
+                }
+
+                // Map to scriptWords index for rendering the green highlight
+                const cleanWord = cleanWords[newCleanIndex];
+                if (!cleanWord) {
+                    console.warn(`[AI Match] cleanWords[${newCleanIndex}] is undefined!`);
+                    return;
+                }
+
+                const scriptWordIndex = cleanWord.scriptWordIndex;
+                console.log(`[AI Match] Advancing to cleanIndex=${newCleanIndex}, word="${cleanWord.word}"`);
+                setMatchedIndex(scriptWordIndex);
+
+                // SCROLL CALCULATION: Use visual line-based calculation
+                // This properly accounts for newlines and text wrapping
+                const layoutConfig = {
+                    fontSize: activeScript?.font_size || 3,
+                    windowWidth,
+                    isLandscape,
+                    scriptMargin: activeScript?.margin || 0
+                };
+
+                const baseTargetY = estimateScrollY(cleanWord.charStart, scriptPlainText, contentHeight, layoutConfig);
+                // Offset by 30% of screen height to position matched text higher on screen
+                const targetY = baseTargetY - (containerHeight * 0.3);
+
+                console.log(`[Scroll] targetY=${targetY.toFixed(0)}, currentScrollY=${scrollY.value.toFixed(0)}`);
 
                 scrollY.value = withTiming(targetY, {
-                    duration: 500, // Reduced from 1200ms for faster response
+                    duration: 500,
                     easing: Easing.out(Easing.quad)
                 });
             }
         }
-    }, [transcript, scrollMode, contentHeight]);
+    }, [transcript, scrollMode, contentHeight, scriptPlainText, cleanWords, activeScript, windowWidth, isLandscape]);
 
     useEffect(() => {
         setIsCameraReady(false);
@@ -490,21 +602,33 @@ export default function Teleprompter() {
     };
 
     const jumpToMatch = (match: { start: number; length: number }) => {
-        // Calculate progress based on character position in plain text
-        const progress = match.start / (scriptPlainText.length || 1);
-        const targetY = -(progress * contentHeight);
+        if (contentHeight > 0) {
+            // SCROLL CALCULATION: Use visual line-based calculation
+            // This properly accounts for newlines and text wrapping
+            const layoutConfig = {
+                fontSize: activeScript?.font_size || 3,
+                windowWidth,
+                isLandscape,
+                scriptMargin: activeScript?.margin || 0
+            };
+            const baseTargetY = estimateScrollY(match.start, scriptPlainText, contentHeight, layoutConfig);
+            // Offset by 30% of screen height to position matched text higher on screen
+            const targetY = baseTargetY - (containerHeight * 0.3);
 
-        if (scrollMode === 'auto') {
-            // Convert character position to approximate word index
-            const textBefore = scriptPlainText.slice(0, match.start);
-            const wordsBefore = textBefore.split(/\s+/).filter(w => w.length > 0).length;
-            lastMatchIndexRef.current = wordsBefore;
+            console.log(`[Search Jump] charStart=${match.start}, targetY=${targetY.toFixed(0)}`);
+
+            if (scrollMode === 'auto') {
+                // Find the word index so the AI knows where we are
+                const wordsBefore = scriptPlainText.slice(0, match.start).split(/\s+/).filter(w => w.length > 0).length;
+                lastMatchIndex.value = wordsBefore;
+                userDidScroll.value = true; // Trigger expanded search
+            }
+
+            scrollY.value = withTiming(targetY, {
+                duration: 500,
+                easing: Easing.out(Easing.quad)
+            });
         }
-
-        scrollY.value = withTiming(targetY, {
-            duration: 500,
-            easing: Easing.out(Easing.quad)
-        });
     };
 
     const handleNextMatch = () => {
@@ -533,6 +657,35 @@ export default function Teleprompter() {
         }
     };
 
+    // Handler for pan gesture end - called via runOnJS from worklet
+    const handlePanEnd = (currentScrollY: number) => {
+        const layoutConfig = {
+            fontSize: activeScript?.font_size || 3,
+            windowWidth,
+            isLandscape,
+            scriptMargin: activeScript?.margin || 0
+        };
+        // Offset by 30% of screen height to find word higher on screen (matching AI scroll behavior)
+        const adjustedScrollY = currentScrollY + (containerHeight * 0.3);
+        const centerCharPosition = estimateCharFromScrollY(adjustedScrollY, scriptPlainText, contentHeight, layoutConfig);
+
+        // Find the cleanWord at or before this position
+        let centerIndex = 0;
+        for (let i = 0; i < cleanWords.length; i++) {
+            if (cleanWords[i].charStart <= centerCharPosition) {
+                centerIndex = i;
+            } else {
+                break;
+            }
+        }
+
+        console.log(`[Pan] scrollY=${currentScrollY.toFixed(0)}, centerCharPos=${centerCharPosition}`);
+        console.log(`[Pan] Center word: index=${centerIndex}, word="${cleanWords[centerIndex]?.word}"`);
+
+        userDidScroll.value = true;
+        lastMatchIndex.value = centerIndex;
+    };
+
     // --- Gesture Logic ---
     const panGesture = Gesture.Pan()
         .onStart(() => {
@@ -548,26 +701,11 @@ export default function Teleprompter() {
         })
         .onEnd(() => {
             if (scrollMode === 'auto') {
-                // In AI mode, we update search index based on scroll position
-                // (using simplistic progress calc for now)
-                const progress = Math.abs(scrollY.value / (contentHeight || 1));
-                const wordIndex = Math.floor(progress * scriptWords.length);
-
-                let targetIndex = 0;
-                if (sectionStartIndices.length > 0) {
-                    for (const start of sectionStartIndices) {
-                        if (start <= wordIndex) {
-                            targetIndex = start;
-                        } else {
-                            break;
-                        }
-                    }
-                }
-
-                lastMatchIndexRef.current = targetIndex;
+                // The pan gesture is a worklet - we need to use runOnJS for complex calculations
+                runOnJS(handlePanEnd)(scrollY.value);
             } else if (isPlaying) {
                 // For Fixed/WPM, resume scrolling from new position
-                startAutoScroll();
+                runOnJS(startAutoScroll)();
             }
         });
 
@@ -601,7 +739,7 @@ export default function Teleprompter() {
             setScrollMode('fixed');
         } else {
             setMatchedIndex(-1);
-            lastMatchIndexRef.current = 0;
+            lastMatchIndex.value = 0;
         }
         setIsPlaying(false);
         scrollY.value = withTiming(0, { duration: 500 });
@@ -611,9 +749,13 @@ export default function Teleprompter() {
         if (scrollMode !== 'auto') {
             setScrollMode('fixed');
         } else {
-            const finalIndex = scriptWords.length - 1;
-            setMatchedIndex(finalIndex);
-            lastMatchIndexRef.current = finalIndex;
+            // Use cleanWords index (last word)
+            const finalCleanIndex = cleanWords.length - 1;
+            lastMatchIndex.value = finalCleanIndex;
+            // Map to scriptWords for rendering
+            if (cleanWords[finalCleanIndex]) {
+                setMatchedIndex(cleanWords[finalCleanIndex].scriptWordIndex);
+            }
         }
         setIsPlaying(false);
         scrollY.value = -contentHeight;
@@ -889,15 +1031,10 @@ export default function Teleprompter() {
                                             }
 
                                             // Determine AI Highlight position relative to this block
-                                            // aiMatchedCharPos is global 
-                                            let aiMatchedCharPos = -1;
-                                            if (matchedIndex >= 0 && scriptWords.length > 0) {
-                                                let charCount = 0;
-                                                for (let i = 0; i <= matchedIndex && i < scriptWords.length; i++) {
-                                                    charCount += scriptWords[i].word.length;
-                                                    if (i < matchedIndex) charCount += 1; // space
-                                                }
-                                                aiMatchedCharPos = charCount;
+                                            // matches are now explicitly mapped to global char indices via scriptWords
+                                            let aiMatchedPosLimit = -1;
+                                            if (matchedIndex >= 0 && matchedIndex < scriptWords.length) {
+                                                aiMatchedPosLimit = scriptWords[matchedIndex].endIndex;
                                             }
 
                                             const blockFontSize = (activeScript?.font_size || 3) * 8 + 16;
@@ -922,17 +1059,31 @@ export default function Teleprompter() {
                                                             h => h.start < endIndex && h.end > startIndex
                                                         );
 
-                                                        // Check AI match
-                                                        const isMatchedByAI = aiMatchedCharPos >= 0 && startIndex < aiMatchedCharPos;
+                                                        // Check AI match overlap
+                                                        // If the segment is fully before the limit, it's matched.
+                                                        // If it's partially before, we need to split.
+                                                        const isFullyMatchedByAI = aiMatchedPosLimit >= endIndex;
+                                                        const isPartiallyMatchedByAI = aiMatchedPosLimit > startIndex && aiMatchedPosLimit < endIndex;
 
-                                                        if (overlappingHighlights.length === 0) {
+                                                        if (overlappingHighlights.length === 0 && isFullyMatchedByAI) {
                                                             return (
                                                                 <Text
                                                                     key={segIdx}
                                                                     style={[
                                                                         baseStyle,
-                                                                        { color: isMatchedByAI ? '#4ade80' : (baseStyle.color || 'white') }
+                                                                        { color: '#4ade80' }
                                                                     ]}
+                                                                >
+                                                                    {text}
+                                                                </Text>
+                                                            );
+                                                        }
+
+                                                        if (overlappingHighlights.length === 0 && !isPartiallyMatchedByAI && !isFullyMatchedByAI) {
+                                                            return (
+                                                                <Text
+                                                                    key={segIdx}
+                                                                    style={baseStyle}
                                                                 >
                                                                     {text}
                                                                 </Text>
@@ -945,6 +1096,7 @@ export default function Teleprompter() {
                                                         const boundaries = new Set<number>();
                                                         boundaries.add(startIndex);
                                                         boundaries.add(endIndex);
+                                                        if (isPartiallyMatchedByAI) boundaries.add(aiMatchedPosLimit);
                                                         overlappingHighlights.forEach(h => {
                                                             if (h.start > startIndex && h.start < endIndex) boundaries.add(h.start);
                                                             if (h.end > startIndex && h.end < endIndex) boundaries.add(h.end);
@@ -971,7 +1123,11 @@ export default function Teleprompter() {
                                                         return (
                                                             <Text key={segIdx}>
                                                                 {parts.map((part, partIdx) => {
-                                                                    const partIsAIMatched = aiMatchedCharPos >= 0 && part.charStart < aiMatchedCharPos;
+                                                                    const partIsAIMatched = aiMatchedPosLimit >= part.charStart + part.text.length; // Fully covered part
+                                                                    // Or checked if part start < limit (if boundaries are constructed correctly, part should be either fully before or after limit)
+                                                                    // Since we added limit to boundaries, parts are split exactly at limit.
+                                                                    // So simple check: start < limit
+                                                                    const isPartMatched = aiMatchedPosLimit > part.charStart;
                                                                     return (
                                                                         <Text
                                                                             key={partIdx}
