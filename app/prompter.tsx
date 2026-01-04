@@ -3,7 +3,9 @@ import { View, Text, TouchableOpacity, Dimensions, ScrollView, StyleSheet, Alert
 import { GestureDetector, Gesture, GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useRouter } from 'expo-router';
 import { useIsFocused } from '@react-navigation/native';
-import { useCameraDevice, useCameraPermission, useMicrophonePermission, Camera } from 'react-native-vision-camera';
+import { useCameraDevice, useCameraPermission, useMicrophonePermission } from '../components/CameraView/CameraView';
+import type { Camera } from 'react-native-vision-camera';
+import CameraView from '../components/CameraView/CameraView';
 import { useScriptStore } from '../store/useScriptStore';
 import { WPM_MIN, WPM_MAX } from '../constants/prompter';
 import { speedToWpm, speedToNormalized, normalizedToSpeed } from '../utils/speed';
@@ -437,6 +439,7 @@ export default function Teleprompter() {
 
     const wasPlayingRef = useRef(false);
     const cameraRef = useRef<Camera>(null);
+
     const isRecordingRef = useRef(isRecording);
 
     // --- Animation Values ---
@@ -459,6 +462,7 @@ export default function Teleprompter() {
         let initialBrightness: number;
 
         const setupBrightness = async () => {
+            if (Platform.OS === 'web') return;
             try {
                 initialBrightness = await Brightness.getBrightnessAsync();
                 const { status } = await Brightness.requestPermissionsAsync();
@@ -484,6 +488,7 @@ export default function Teleprompter() {
     // Configure Audio Session for concurrency (Restored for Dual-Stream)
     useEffect(() => {
         const configureAudio = async () => {
+            if (Platform.OS === 'web') return;
             try {
                 // User requested specific configuration for Dual-Stream
                 // Using expo-audio's direct API and unified interruptionMode
@@ -890,13 +895,13 @@ export default function Teleprompter() {
                 {/* 1. Camera Layer (Background) only if Phone Mode */}
                 {activeScript?.mode === 'phone' && activeDevice && (
                     <View style={StyleSheet.absoluteFill}>
-                        <Camera
+                        <CameraView
                             ref={cameraRef}
                             style={StyleSheet.absoluteFill}
                             device={activeDevice}
                             isActive={isCameraActive}
                             video={true}
-                            audio={true}
+                            audio={hasMicPermission}
                         />
                         {/* Dark Overlay for readability */}
                         <View className="absolute inset-0 bg-black/40" />
