@@ -64,7 +64,9 @@ export function parseHtmlToStyledSegments(html: string): { segments: StyledSegme
         currentIndex += text.length;
     };
 
-    for (const token of tokens) {
+    for (let i = 0; i < tokens.length; i++) {
+        const token = tokens[i];
+
         if (token.startsWith('<')) {
             // It's a tag
             const isCloseTag = token.startsWith('</');
@@ -82,6 +84,16 @@ export function parseHtmlToStyledSegments(html: string): { segments: StyledSegme
                     pendingNewline = true;
                 }
             } else {
+                // Opening Tag
+
+                // If this is a block tag (p, div, br) and we are not at start, 
+                // ensure we have a newline separator if one isn't pending.
+                // This fixes "Line 1<div>Line 2</div>" merging.
+                const isBlockStart = tagName === 'p' || tagName === 'div';
+                if (isBlockStart && currentIndex > 0 && !pendingNewline) {
+                    addSegment('\n', {});
+                }
+
                 // Add pending newline before new content (but not at start)
                 if (pendingNewline && currentIndex > 0) {
                     addSegment('\n', {});
@@ -107,15 +119,40 @@ export function parseHtmlToStyledSegments(html: string): { segments: StyledSegme
 
                 // Handle <br> as self-closing newline
                 if (tagName === 'br') {
-                    addSegment('\n', {});
+                    // Check lookahead: if <br> is followed by closing block tag, ignore it
+                    let ignoreBr = false;
+                    if (i + 1 < tokens.length) {
+                        const nextToken = tokens[i + 1];
+                        if (nextToken.startsWith('</')) {
+                            const nextTagName = nextToken.replace(/[</>]/g, '').split(' ')[0].toLowerCase();
+                            if (nextTagName === 'p' || nextTagName === 'div') {
+                                ignoreBr = true;
+                            }
+                        }
+                    }
+
+                    if (!ignoreBr) {
+                        addSegment('\n', {});
+                    }
                 }
 
                 styleStack.push(newStyle);
                 currentStyle = newStyle;
             }
         } else {
-            // It's text content
-            // Add pending newline before text content
+            // Text Content
+
+            // Check if text is just whitespace
+            const isWhitespace = !token.trim();
+
+            // If we have a pending newline from a previous block close,
+            // and this text is just whitespace (e.g. pretty-printed HTML indentation),
+            // IGNORE IT. Don't flush pendingNewline yet.
+            if (pendingNewline && isWhitespace) {
+                continue;
+            }
+
+            // Add pending newline before real text content
             if (pendingNewline && currentIndex > 0) {
                 addSegment('\n', {});
                 pendingNewline = false;
@@ -130,7 +167,6 @@ export function parseHtmlToStyledSegments(html: string): { segments: StyledSegme
                 .replace(/&quot;/g, '"');
 
             // Add the text as a single segment with current style
-            // This preserves exact whitespace including multiple spaces
             if (decodedText.length > 0) {
                 addSegment(decodedText, currentStyle);
             }
