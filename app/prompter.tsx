@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { View, Text, TouchableOpacity, Dimensions, ScrollView, StyleSheet, Alert, Animated as RNAnimated, Linking, useWindowDimensions, TextInput, AppState, Modal, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, Dimensions, ScrollView, StyleSheet, Alert, Linking, useWindowDimensions, TextInput, AppState, Modal, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
 import { GestureDetector, Gesture, GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useRouter } from 'expo-router';
 import { useIsFocused } from '@react-navigation/native';
@@ -36,6 +36,27 @@ interface TextBlock {
     startIndex: number; // Global start index in plain text
     endIndex: number;   // Global end index in plain text
 }
+
+// --- Storage Helpers for Web Compatibility ---
+const getStorageItem = async (key: string): Promise<string | null> => {
+    if (Platform.OS === 'web') {
+        if (typeof localStorage !== 'undefined') {
+            return localStorage.getItem(key);
+        }
+        return null;
+    }
+    return await SecureStore.getItemAsync(key);
+};
+
+const setStorageItem = async (key: string, value: string): Promise<void> => {
+    if (Platform.OS === 'web') {
+        if (typeof localStorage !== 'undefined') {
+            localStorage.setItem(key, value);
+        }
+    } else {
+        await SecureStore.setItemAsync(key, value);
+    }
+};
 
 export default function Teleprompter() {
     // --- Hooks & Store ---
@@ -93,7 +114,7 @@ export default function Teleprompter() {
     const handleModeChange = async (mode: 'auto' | 'fixed' | 'wpm') => {
         if (mode === 'auto') {
             try {
-                const hasEntered = await SecureStore.getItemAsync('has_entered_invite_code');
+                const hasEntered = await getStorageItem('has_entered_invite_code');
                 if (hasEntered === 'true') {
                     // If user has scrolled before entering AI mode, enable expanded search
                     if (scrollY.value !== 0) {
@@ -132,17 +153,26 @@ export default function Teleprompter() {
     };
 
     const verifyInviteCode = async () => {
-        if (inviteCodeInput === process.env.EXPO_PUBLIC_INVITE_CODE) {
+        const codeToCheck = inviteCodeInput.trim();
+        if (codeToCheck === process.env.EXPO_PUBLIC_INVITE_CODE) {
             try {
-                await SecureStore.setItemAsync('has_entered_invite_code', 'true');
+                await setStorageItem('has_entered_invite_code', 'true');
                 setShowInviteModal(false);
                 setScrollMode('auto');
             } catch (error) {
                 console.error("Error saving invite code status:", error);
-                Alert.alert("Error", "Could not save verification status.");
+                if (Platform.OS === 'web') {
+                    window.alert("Error: Could not save verification status.");
+                } else {
+                    Alert.alert("Error", "Could not save verification status.");
+                }
             }
         } else {
-            Alert.alert("Invalid Code", "The invite code you entered is incorrect.");
+            if (Platform.OS === 'web') {
+                window.alert("Invalid Code: The invite code you entered is incorrect.");
+            } else {
+                Alert.alert("Invalid Code", "The invite code you entered is incorrect.");
+            }
         }
     };
 
@@ -864,7 +894,8 @@ export default function Teleprompter() {
         );
     }
 
-    if (!hasCamPermission || !hasMicPermission) return <View className="bg-black flex-1" />;
+    if (Platform.OS !== 'web' && (!hasCamPermission || !hasMicPermission)) return <View className="bg-black flex-1" />;
+
     if ((!hasCamPermission || !hasMicPermission) && activeScript?.mode === 'phone') {
         return (
             <View className="flex-1 bg-black items-center justify-center p-6">

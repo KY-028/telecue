@@ -19,13 +19,12 @@ config.transformer = {
 };
 
 config.resolver.resolveRequest = (context, moduleName, platform) => {
-    if (platform === 'web') {
-        if (moduleName === 'react-native-worklets') {
-            return {
-                filePath: require.resolve('./mocks/react-native-worklets.js'),
-                type: 'sourceFile',
-            };
-        }
+    if (platform === 'web' && moduleName === 'react-native-worklets') {
+        // Direct Metro to your local mock file instead of node_modules
+        return {
+            filePath: require.resolve('./mocks/react-native-worklets.js'),
+            type: 'sourceFile',
+        };
     }
     // Chain to standard Metro resolver
     return context.resolveRequest(context, moduleName, platform);

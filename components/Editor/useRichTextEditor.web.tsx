@@ -179,6 +179,8 @@ export function FormattingToolbar(props: FormattingToolbarComponentProps) {
                             return (
                                 <TouchableOpacity
                                     key={color.value}
+                                    // @ts-ignore - Web only prop
+                                    onMouseDown={(e: any) => e.preventDefault()}
                                     onPress={() => {
                                         exec('foreColor', color.value);
                                         setActiveColor(color.value);
@@ -203,22 +205,47 @@ export function FormattingToolbar(props: FormattingToolbarComponentProps) {
 
             <View className="flex-row items-center justify-between p-2 px-4 h-14 bg-zinc-100 dark:bg-zinc-800">
                 <View className="flex-row items-center gap-4">
-                    <TouchableOpacity onPress={() => exec('bold')} className={isBold ? "bg-zinc-200 dark:bg-zinc-700 rounded-lg p-2" : "p-2"}>
+                    <TouchableOpacity
+                        // @ts-ignore - Web only prop
+                        onMouseDown={(e: any) => e.preventDefault()}
+                        onPress={() => exec('bold')}
+                        className={isBold ? "bg-zinc-200 dark:bg-zinc-700 rounded-lg p-2" : "p-2"}
+                    >
                         <Bold size={20} color={isBold ? "#60A5FA" : (isDarkMode ? "#E4E4E7" : "#3f3f46")} />
                     </TouchableOpacity>
-                    <TouchableOpacity onPress={() => exec('italic')} className={isItalic ? "bg-zinc-200 dark:bg-zinc-700 rounded-lg p-2" : "p-2"}>
+                    <TouchableOpacity
+                        // @ts-ignore - Web only prop
+                        onMouseDown={(e: any) => e.preventDefault()}
+                        onPress={() => exec('italic')}
+                        className={isItalic ? "bg-zinc-200 dark:bg-zinc-700 rounded-lg p-2" : "p-2"}
+                    >
                         <Italic size={20} color={isItalic ? "#60A5FA" : (isDarkMode ? "#E4E4E7" : "#3f3f46")} />
                     </TouchableOpacity>
-                    <TouchableOpacity onPress={() => exec('underline')} className={isUnderline ? "bg-zinc-200 dark:bg-zinc-700 rounded-lg p-2" : "p-2"}>
+                    <TouchableOpacity
+                        // @ts-ignore - Web only prop
+                        onMouseDown={(e: any) => e.preventDefault()}
+                        onPress={() => exec('underline')}
+                        className={isUnderline ? "bg-zinc-200 dark:bg-zinc-700 rounded-lg p-2" : "p-2"}
+                    >
                         <Underline size={20} color={isUnderline ? "#60A5FA" : (isDarkMode ? "#E4E4E7" : "#3f3f46")} />
                     </TouchableOpacity>
                     <View className="w-px h-6 bg-zinc-200 dark:bg-zinc-700 mx-1" />
-                    <TouchableOpacity onPress={() => setShowColors(!showColors)} className={showColors ? "bg-zinc-200 dark:bg-zinc-700 rounded-lg p-2" : "p-2"}>
+                    <TouchableOpacity
+                        // @ts-ignore - Web only prop
+                        onMouseDown={(e: any) => e.preventDefault()}
+                        onPress={() => setShowColors(!showColors)}
+                        className={showColors ? "bg-zinc-200 dark:bg-zinc-700 rounded-lg p-2" : "p-2"}
+                    >
                         <Palette size={20} color={showColors ? "#60A5FA" : (isDarkMode ? "#E4E4E7" : "#3f3f46")} />
                     </TouchableOpacity>
                 </View>
 
-                <TouchableOpacity onPress={onDone} className="p-2 flex-row items-center justify-center">
+                <TouchableOpacity
+                    // @ts-ignore - Web only prop
+                    onMouseDown={(e: any) => e.preventDefault()}
+                    onPress={onDone}
+                    className="p-2 flex-row items-center justify-center"
+                >
                     <Text className="text-blue-600 dark:text-blue-400 font-bold text-lg">{i18n.t('done')}</Text>
                 </TouchableOpacity>
             </View>
