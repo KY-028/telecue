@@ -107,7 +107,7 @@ const DraggableMarginPreview = ({ activeScript, updateSettings }: { activeScript
 
             <Animated.View
                 className="flex-1 bg-black"
-                style={[contentStyle, mirrorTransform, { width: '100%' }]}
+                style={[contentStyle, mirrorTransform, { width: '100%', backgroundColor: 'black' }]}
             >
                 <ScrollView
                     showsVerticalScrollIndicator={false}

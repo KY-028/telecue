@@ -1,5 +1,13 @@
+import { Platform, useColorScheme } from 'react-native';
+if (Platform.OS === 'web') {
+    // @ts-ignore
+    window._WORKLET = false;
+    // @ts-ignore
+    window._getAnimationTimestamp = () => performance.now();
+}
+
+import 'react-native-reanimated';
 import { useEffect } from 'react';
-import { useColorScheme } from 'react-native';
 import { Stack } from 'expo-router';
 
 import { initDatabase, DATABASE_NAME } from '../db/schema';
@@ -19,7 +27,9 @@ export default function RootLayout() {
         const unlockOrientation = async () => {
             await ScreenOrientation.unlockAsync();
         };
-        unlockOrientation();
+        if (Platform.OS !== 'web') {
+            unlockOrientation();
+        }
     }, []);
 
     return (
