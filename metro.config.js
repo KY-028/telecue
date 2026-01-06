@@ -3,13 +3,6 @@ const { withNativeWind } = require("nativewind/dist/metro");
 
 const config = getDefaultConfig(__dirname);
 
-// ADD THESE TWO LINES:
-config.resolver.unstable_enablePackageExports = true;
-config.resolver.sourceExts = [
-    ...config.resolver.sourceExts,
-    "mjs",
-    "cjs"
-];
 // Setup WASM for expo-sqlite (must be an asset, not source)
 config.resolver.assetExts.push('wasm');
 config.resolver.sourceExts = config.resolver.sourceExts.filter(ext => ext !== 'wasm');
@@ -26,13 +19,15 @@ config.transformer = {
 };
 
 config.resolver.resolveRequest = (context, moduleName, platform) => {
-    if (platform === 'web' && moduleName === 'react-native-worklets') {
-        // Direct Metro to your local mock file instead of node_modules
-        return {
-            filePath: require.resolve('./mocks/react-native-worklets.js'),
-            type: 'sourceFile',
-        };
+    if (platform === 'web') {
+        if (moduleName === 'react-native-worklets') {
+            return {
+                filePath: require.resolve('./mocks/react-native-worklets.js'),
+                type: 'sourceFile',
+            };
+        }
     }
+    // Chain to standard Metro resolver
     return context.resolveRequest(context, moduleName, platform);
 };
 

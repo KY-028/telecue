@@ -10,7 +10,6 @@
   },
   "dependencies": {
     "@10play/tentap-editor": "^1.0.1",
-    "@babel/plugin-proposal-export-namespace-from": "^7.18.9",
     "@react-native-community/slider": "5.0.1",
     "@siteed/expo-audio-studio": "^2.18.1",
     "expo": "^54.0.30",
@@ -22,7 +21,6 @@
     "expo-linking": "~8.0.11",
     "expo-localization": "~17.0.8",
     "expo-media-library": "~18.2.1",
-    "expo-modules-core": "~3.0.29",
     "expo-router": "~6.0.21",
     "expo-screen-orientation": "~9.0.8",
     "expo-secure-store": "~15.0.8",
@@ -37,7 +35,7 @@
     "react-dom": "19.1.0",
     "react-native": "^0.81.5",
     "react-native-gesture-handler": "~2.28.0",
-    "react-native-reanimated": "~3.16.0",
+    "react-native-reanimated": "~4.1.1",
     "react-native-safe-area-context": "~5.6.0",
     "react-native-screens": "~4.16.0",
     "react-native-svg": "15.12.1",
@@ -45,6 +43,7 @@
     "react-native-web": "^0.21.0",
     "react-native-webview": "13.15.0",
     "react-native-worklets": "0.5.1",
+    "react-native-worklets-core": "^1.6.2",
     "tailwindcss": "3.4.1",
     "zustand": "^5.0.9"
   },
@@ -52,21 +51,19 @@
     "react": "$react",
     "react-dom": "$react-dom",
     "@types/react": "$@types/react",
-    "@types/react-dom": "$@types/react-dom"
+    "@types/react-dom": "$@types/react-dom",
+    "expo-modules-core": "3.0.29"
   },
   "devDependencies": {
     "@types/lodash.debounce": "^4.0.9",
     "@types/react": "19.1.10",
     "@types/react-dom": "19.1.10",
-    "make-plural": "^8.1.0",
-    "react-native-worklets": "^0.7.1",
     "typescript": "~5.9.2"
   },
   "expo": {
     "install": {
       "exclude": [
-        "expo-modules-core",
-        "react-native-reanimated"
+        "expo-modules-core"
       ]
     }
   },
