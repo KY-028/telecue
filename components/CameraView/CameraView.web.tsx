@@ -1,4 +1,4 @@
-import React, { forwardRef, useImperativeHandle, useEffect, useRef, useState, useLayoutEffect } from 'react';
+import React, { forwardRef, useImperativeHandle, useEffect, useRef, useState } from 'react';
 import { View, StyleSheet } from 'react-native';
 
 // Types matching react-native-vision-camera interface
@@ -35,41 +35,57 @@ export const useCameraDevice = (position: 'front' | 'back'): CameraDevice | unde
     const [device, setDevice] = useState<CameraDevice | undefined>(undefined);
 
     useEffect(() => {
+        let isMounted = true;
+        let pollInterval: any = null;
+
         const getDevices = async () => {
             try {
+                if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
+                    console.warn('enumerateDevices not supported');
+                    return;
+                }
+
                 const devices = await navigator.mediaDevices.enumerateDevices();
                 const videoDevices = devices.filter(device => device.kind === 'videoinput');
-                
-                // Find device based on position (front/back)
-                // On web, we can't reliably detect front/back, so we'll use the first available device
-                // or try to match by label if available
+
+                // If no devices found or labels are empty (no permission yet), keep checking
+                const hasLabels = videoDevices.some(d => d.label.length > 0);
+
+                if (videoDevices.length === 0) {
+                    if (isMounted) setDevice(undefined);
+                    return;
+                }
+
+                // Find device based on position
                 let selectedDevice = videoDevices[0];
-                
+
                 if (videoDevices.length > 1) {
-                    // Try to find front camera (usually labeled with "front" or "user")
                     if (position === 'front') {
-                        selectedDevice = videoDevices.find(d => 
-                            d.label.toLowerCase().includes('front') || 
+                        selectedDevice = videoDevices.find(d =>
+                            d.label.toLowerCase().includes('front') ||
                             d.label.toLowerCase().includes('user') ||
                             d.label.toLowerCase().includes('facetime')
                         ) || videoDevices[0];
                     } else {
-                        // Try to find back camera (usually labeled with "back" or "environment")
-                        selectedDevice = videoDevices.find(d => 
-                            d.label.toLowerCase().includes('back') || 
+                        selectedDevice = videoDevices.find(d =>
+                            d.label.toLowerCase().includes('back') ||
                             d.label.toLowerCase().includes('environment') ||
                             d.label.toLowerCase().includes('rear')
                         ) || videoDevices[videoDevices.length - 1];
                     }
                 }
 
-                if (selectedDevice) {
-                    setDevice({
-                        id: selectedDevice.deviceId,
-                        name: selectedDevice.label || `Camera ${position}`,
-                        position,
-                        hasFlash: false,
-                        hasTorch: false,
+                if (selectedDevice && isMounted) {
+                    // Only update if device changed to avoid redundant renders
+                    setDevice(prev => {
+                        if (prev?.id === selectedDevice.deviceId) return prev;
+                        return {
+                            id: selectedDevice.deviceId,
+                            name: selectedDevice.label || `Camera ${position}`,
+                            position,
+                            hasFlash: false,
+                            hasTorch: false,
+                        };
                     });
                 }
             } catch (error) {
@@ -77,7 +93,32 @@ export const useCameraDevice = (position: 'front' | 'back'): CameraDevice | unde
             }
         };
 
+        // Initial check
         getDevices();
+
+        // Listen for device changes (plugging in, permissions granted often trigger this)
+        const handleDeviceChange = () => getDevices();
+        if (navigator.mediaDevices) {
+            navigator.mediaDevices.addEventListener('devicechange', handleDeviceChange);
+        }
+
+        // POLLING: Aggressively check for a few seconds if no device found or generic label
+        // This helps when permission is granted *after* component mount
+        let attempts = 0;
+        pollInterval = setInterval(() => {
+            attempts++;
+            getDevices();
+            // Stop polling after 5 seconds
+            if (attempts > 10) clearInterval(pollInterval);
+        }, 500);
+
+        return () => {
+            isMounted = false;
+            if (pollInterval) clearInterval(pollInterval);
+            if (navigator.mediaDevices) {
+                navigator.mediaDevices.removeEventListener('devicechange', handleDeviceChange);
+            }
+        };
     }, [position]);
 
     return device;
@@ -233,6 +274,13 @@ const CameraView = forwardRef<CameraRef, CameraProps>(({ device, isActive = true
         };
     }, [isActive, device, video, audio]);
 
+    // Update video element source when stream changes
+    useEffect(() => {
+        if (videoRef.current && streamRef.current) {
+            videoRef.current.srcObject = streamRef.current;
+        }
+    }, [streamRef.current]);
+
     // Callback ref to attach video element to container
     const setContainerRef = (node: any) => {
         containerRef.current = node;
@@ -260,6 +308,7 @@ const CameraView = forwardRef<CameraRef, CameraProps>(({ device, isActive = true
             const video = document.createElement('video');
             video.autoplay = true;
             video.playsInline = true;
+            video.muted = true; // IMPORTANT: Mute to prevent echo (feedback loop)
             video.style.cssText = 'width:100%;height:100%;object-fit:cover;position:absolute;top:0;left:0;';
             domNode.appendChild(video);
             videoRef.current = video;
@@ -286,7 +335,7 @@ const CameraView = forwardRef<CameraRef, CameraProps>(({ device, isActive = true
             if (ctx) {
                 ctx.drawImage(videoRef.current, 0, 0);
                 const dataUrl = canvas.toDataURL('image/jpeg');
-                
+
                 // Return as file path (web-compatible format)
                 return { path: dataUrl };
             }
@@ -295,44 +344,80 @@ const CameraView = forwardRef<CameraRef, CameraProps>(({ device, isActive = true
 
         startRecording: async (options: RecordingOptions) => {
             if (!streamRef.current) {
-                options.onRecordingError(new Error('Camera stream not available'));
+                const err = new Error('Camera stream not available');
+                console.error(err);
+                options.onRecordingError(err);
                 return;
             }
 
-            try {
-                const chunks: Blob[] = [];
-                const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
-                    ? 'video/webm;codecs=vp9'
-                    : MediaRecorder.isTypeSupported('video/webm')
-                    ? 'video/webm'
-                    : 'video/mp4';
-
-                const mediaRecorder = new MediaRecorder(streamRef.current, {
-                    mimeType,
-                    videoBitsPerSecond: 2500000, // 2.5 Mbps
-                });
-
-                mediaRecorder.ondataavailable = (event) => {
-                    if (event.data.size > 0) {
-                        chunks.push(event.data);
+            const tryStartRecording = (mimeType: string | undefined) => {
+                try {
+                    const chunks: Blob[] = [];
+                    const recorderOptions: MediaRecorderOptions = {
+                        videoBitsPerSecond: 2500000,
+                    };
+                    if (mimeType) {
+                        recorderOptions.mimeType = mimeType;
                     }
-                };
 
-                mediaRecorder.onstop = () => {
-                    const blob = new Blob(chunks, { type: mimeType });
-                    const url = URL.createObjectURL(blob);
-                    options.onRecordingFinished({ path: url });
-                };
+                    console.log(`[CameraView] Attempting recording with mimeType: ${mimeType || 'default'}`);
+                    const mediaRecorder = new MediaRecorder(streamRef.current!, mimeType ? recorderOptions : undefined);
 
-                mediaRecorder.onerror = (event) => {
-                    options.onRecordingError(new Error('Recording error occurred'));
-                };
+                    mediaRecorder.ondataavailable = (event) => {
+                        if (event.data.size > 0) {
+                            chunks.push(event.data);
+                        }
+                    };
 
-                mediaRecorder.start();
-                mediaRecorderRef.current = mediaRecorder;
-                recordingOptionsRef.current = options;
-            } catch (error) {
-                options.onRecordingError(error instanceof Error ? error : new Error('Failed to start recording'));
+                    mediaRecorder.onstop = () => {
+                        const finalType = mediaRecorder.mimeType || mimeType || 'video/webm';
+                        console.log(`[CameraView] Recording finished. Final mimeType: ${finalType}, Chunks: ${chunks.length}`);
+                        const blob = new Blob(chunks, { type: finalType });
+                        const url = URL.createObjectURL(blob);
+                        options.onRecordingFinished({ path: url });
+                    };
+
+                    mediaRecorder.onerror = (event: any) => {
+                        console.error("[CameraView] MediaRecorder error:", event);
+                        options.onRecordingError(new Error('Recording error occurred: ' + (event.error?.message || 'Unknown')));
+                    };
+
+                    mediaRecorder.start();
+                    mediaRecorderRef.current = mediaRecorder;
+                    recordingOptionsRef.current = options;
+                    return true;
+                } catch (e) {
+                    console.warn(`[CameraView] Failed to start recorder with mimeType ${mimeType}:`, e);
+                    return false;
+                }
+            };
+
+            // Strategy: Try preferred MP4 -> preferred WebM -> Default (no options)
+            let success = false;
+
+            // 1. Try MP4 if supported
+            if (MediaRecorder.isTypeSupported('video/mp4')) {
+                success = tryStartRecording('video/mp4');
+            }
+
+            // 2. Try WebM if MP4 failed or not supported
+            if (!success && MediaRecorder.isTypeSupported('video/webm;codecs=vp9')) {
+                success = tryStartRecording('video/webm;codecs=vp9');
+            }
+            if (!success && MediaRecorder.isTypeSupported('video/webm')) {
+                success = tryStartRecording('video/webm');
+            }
+
+            // 3. Fallback to browser default (no mimeType specified)
+            if (!success) {
+                console.log('[CameraView] Fallback to default MediaRecorder settings');
+                success = tryStartRecording(undefined);
+            }
+
+            if (!success) {
+                const err = new Error('Failed to initialize MediaRecorder with any configuration');
+                console.error(err);
+                options.onRecordingError(err);
             }
         },
 
@@ -351,7 +436,7 @@ const CameraView = forwardRef<CameraRef, CameraProps>(({ device, isActive = true
     }));
 
     return (
-        <View 
+        <View
             ref={setContainerRef}
             style={[styles.container, style]}
         />

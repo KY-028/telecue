@@ -609,7 +609,7 @@ export default function Teleprompter() {
 
     const handleSearch = (text: string) => {
         setSearchQuery(text);
-        if (!text.trim() || text.length < 2) {
+        if (!text.trim()) {
             setAllMatches([]);
             setMatchCursor(0);
             return;
@@ -622,7 +622,8 @@ export default function Teleprompter() {
 
         let searchStart = 0;
         let idx = lowerPlainText.indexOf(lowerQuery, searchStart);
-        while (idx !== -1) {
+        // SAFETY: Cap matches to avoid performance issues with single letters (e.g. 'e')
+        while (idx !== -1 && matches.length < 500) {
             matches.push({ start: idx, length: text.length });
             searchStart = idx + 1;
             idx = lowerPlainText.indexOf(lowerQuery, searchStart);
@@ -691,6 +692,49 @@ export default function Teleprompter() {
             setTimeout(() => searchInputRef.current?.focus(), 100);
         }
     };
+
+    // --- Web Keyboard & Mouse Listeners ---
+    useEffect(() => {
+        if (Platform.OS === 'web') {
+            const handleWheel = (e: WheelEvent) => {
+                // Prevent default scrolling behavior to handle it manually
+                e.preventDefault();
+
+                cancelAnimation(scrollY);
+
+                // If in auto mode, mark as user scrolled so it doesn't jump back immediately
+                if (scrollMode === 'auto') {
+                    userDidScroll.value = true;
+                }
+
+                const currentY = scrollY.value;
+                const delta = e.deltaY;
+                let nextY = currentY - delta;
+
+                // Clamp
+                if (nextY > 0) nextY = 0;
+                if (nextY < -contentHeight) nextY = -contentHeight;
+
+                scrollY.value = nextY;
+            };
+
+            const handleKeyDown = (e: KeyboardEvent) => {
+                if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'f') {
+                    e.preventDefault();
+                    toggleSearch();
+                }
+            };
+
+            // Using passive: false to allow preventDefault on wheel
+            window.addEventListener('wheel', handleWheel, { passive: false });
+            window.addEventListener('keydown', handleKeyDown);
+
+            return () => {
+                window.removeEventListener('wheel', handleWheel);
+                window.removeEventListener('keydown', handleKeyDown);
+            };
+        }
+    }, [contentHeight, scrollMode, toggleSearch]);
 
     // Handler for pan gesture end - called via runOnJS from worklet
     const handlePanEnd = (currentScrollY: number) => {
@@ -820,67 +864,162 @@ export default function Teleprompter() {
     };
 
     const toggleRecording = async () => {
-        if (isRecording) {
-            setIsRecording(false);
-            try {
-                await cameraRef.current?.stopRecording();
-            } catch (e) {
-                console.error("Stop recording error:", e);
-            }
-            return;
-        }
-
-        if (!activeDevice) {
-            Alert.alert(i18n.t('error'), i18n.t('cameraNotFound'));
-            return;
-        }
-
-        if (isCallActive) {
-            Alert.alert(i18n.t('recordingUnavailable'), i18n.t('callActiveError'));
-            return;
-        }
-
-        if (!hasMicPermission) {
-            const micGranted = await requestMicPermission();
-            if (!micGranted) {
-                Alert.alert(i18n.t('permissionNeeded'), i18n.t('micPermissionRequired'));
-                return;
-            }
-        }
-        if (!mediaPermission?.granted) {
-            const mediaResponse = await requestMediaPermission();
-            if (!mediaResponse.granted) {
-                if (!mediaResponse.canAskAgain) {
-                    Alert.alert(i18n.t('permissionNeeded'), i18n.t('mediaPermissionRequiredSettings'), [
-                        { text: i18n.t('cancel'), style: 'cancel' },
-                        { text: i18n.t('openSettings'), onPress: () => Linking.openSettings() }
-                    ]);
-                } else {
-                    Alert.alert(i18n.t('permissionNeeded'), i18n.t('mediaPermissionRequired'));
-                }
-                return;
-            }
-        }
-
-        setIsRecording(true);
         try {
-            cameraRef.current?.startRecording({
-                onRecordingFinished: (video) => {
-                    MediaLibrary.saveToLibraryAsync(video.path);
-                    Alert.alert(i18n.t('saved'), i18n.t('videoSaved'));
-                },
-                onRecordingError: (error) => {
-                    console.error("Recording error:", error);
-                    Alert.alert(i18n.t('error'), i18n.t('recordingFailed'));
-                    setIsRecording(false);
+            console.log('[Prompter] toggleRecording called. isRecording:', isRecording);
+            if (isRecording) {
+                setIsRecording(false);
+                try {
+                    await cameraRef.current?.stopRecording();
+                } catch (e) {
+                    console.error("Stop recording error:", e);
                 }
-            });
-        } catch (error) {
-            console.error("Recording error:", error);
-            Alert.alert(i18n.t('error'), i18n.t('startRecordingFailed'));
-            setIsRecording(false);
+                return;
+            }
+
+            if (!activeDevice) {
+                console.log('[Prompter] toggleRecording failed: No activeDevice found.');
+                const msg = i18n.t('cameraNotFound');
+                if (Platform.OS === 'web') window.alert(msg);
+                else Alert.alert(i18n.t('error'), msg);
+                return;
+            }
+
+            if (isCallActive && Platform.OS !== 'web') {
+                Alert.alert(i18n.t('recordingUnavailable'), i18n.t('callActiveError'));
+                return;
+            }
+
+            if (!hasMicPermission) {
+                const micGranted = await requestMicPermission();
+                if (!micGranted) {
+                    Alert.alert(i18n.t('permissionNeeded'), i18n.t('micPermissionRequired'));
+                    return;
+                }
+            }
+
+            // Skipped media permission check on web (patched previously), restored for Native:
+            if (Platform.OS !== 'web' && !mediaPermission?.granted) {
+                const mediaResponse = await requestMediaPermission();
+                if (!mediaResponse.granted) {
+                    if (!mediaResponse.canAskAgain) {
+                        Alert.alert(i18n.t('permissionNeeded'), i18n.t('mediaPermissionRequiredSettings'), [
+                            { text: i18n.t('cancel'), style: 'cancel' },
+                            { text: i18n.t('openSettings'), onPress: () => Linking.openSettings() }
+                        ]);
+                    } else {
+                        Alert.alert(i18n.t('permissionNeeded'), i18n.t('mediaPermissionRequired'));
+                    }
+                    return;
+                }
+            }
+
+            console.log('[Prompter] Starting recording... cameraRef exists?', !!cameraRef.current);
+            if (!cameraRef.current) {
+                console.error('[Prompter] cameraRef.current is null! Cannot start recording.');
+                const msg = 'Internal Error: Camera reference missing. Refresh the page?';
+                if (Platform.OS === 'web') window.alert(msg);
+                else Alert.alert(i18n.t('error'), msg);
+                return;
+            }
+
+            setIsRecording(true);
+            try {
+                cameraRef.current?.startRecording({
+                    onRecordingFinished: (video) => {
+                        console.log('[Prompter] onRecordingFinished', video);
+                        if (Platform.OS === 'web') {
+                            // Web download logic with File System Access API support
+                            const saveRecording = async () => {
+                                const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+                                const filename = `telecue-recording-${timestamp}.mp4`;
+
+                                try {
+                                    // Try modern File System Access API
+                                    // @ts-ignore - showSaveFilePicker is not yet in standard lib
+                                    if (typeof window.showSaveFilePicker === 'function') {
+                                        const handle = await (window as any).showSaveFilePicker({
+                                            suggestedName: filename,
+                                            types: [{
+                                                description: 'Video File',
+                                                accept: { 'video/mp4': ['.mp4', '.webm'] },
+                                            }],
+                                        });
+
+                                        // Fetch the blob from the blob URL
+                                        const response = await fetch(video.path);
+                                        const blob = await response.blob();
+
+                                        const writable = await handle.createWritable();
+                                        await writable.write(blob);
+                                        await writable.close();
+                                        window.alert("Recording saved successfully.");
+                                        return;
+                                    }
+                                } catch (err: any) {
+                                    if (err.name === 'AbortError') {
+                                        // User cancelled the picker
+                                        return;
+                                    }
+                                    console.warn("File System Access API failed, falling back to download:", err);
+                                }
+
+                                // Fallback to classic download
+                                const a = document.createElement('a');
+                                a.href = video.path;
+                                a.download = filename;
+                                document.body.appendChild(a);
+                                a.click();
+                                document.body.removeChild(a);
+                            };
+
+                            saveRecording();
+                        } else {
+                            // Native save logic
+                            MediaLibrary.saveToLibraryAsync(video.path);
+                            Alert.alert(i18n.t('saved'), i18n.t('videoSaved'));
+                        }
+                    },
+                    onRecordingError: (error) => {
+                        console.error("[Prompter] Recording error callback:", error);
+                        const msg = i18n.t('recordingFailed') + ": " + error.message;
+                        if (Platform.OS === 'web') window.alert(msg);
+                        else Alert.alert(i18n.t('error'), msg);
+                        setIsRecording(false);
+                    }
+                });
+            } catch (error: any) {
+                console.error("[Prompter] Start recording synchronous error:", error);
+                const msg = i18n.t('startRecordingFailed') + ": " + (error?.message || 'Unknown');
+                if (Platform.OS === 'web') window.alert(msg);
+                else Alert.alert(i18n.t('error'), msg);
+                setIsRecording(false);
+            }
+        } catch (e: any) {
+            console.error("[Prompter] CRITICAL toggleRecording error:", e);
+            if (Platform.OS === 'web') window.alert("Critical Error: " + e.message);
         }
     };
+
+    // --- Memoized Camera View to prevent flashing on state updates ---
+    const cameraLayer = useMemo(() => {
+        if ((activeScript?.mode === 'phone' || Platform.OS === 'web') && activeDevice) {
+            return (
+                <View style={StyleSheet.absoluteFill}>
+                    <CameraView
+                        ref={cameraRef}
+                        style={StyleSheet.absoluteFill}
+                        device={activeDevice}
+                        isActive={isCameraActive}
+                        video={true}
+                        audio={hasMicPermission}
+                    />
+                    {/* Dark Overlay for readability */}
+                    <View className="absolute inset-0 bg-black/40 z-1" />
+                </View>
+            );
+        }
+        return null;
+    }, [activeScript?.mode, activeDevice, isCameraActive, hasMicPermission]);
 
     // --- Render Helpers ---
     if (!activeScript) {
@@ -923,21 +1062,8 @@ export default function Teleprompter() {
                 className="flex-1 bg-black relative"
                 onLayout={(e) => setContainerHeight(e.nativeEvent.layout.height)}
             >
-                {/* 1. Camera Layer (Background) only if Phone Mode */}
-                {activeScript?.mode === 'phone' && activeDevice && (
-                    <View style={StyleSheet.absoluteFill}>
-                        <CameraView
-                            ref={cameraRef}
-                            style={StyleSheet.absoluteFill}
-                            device={activeDevice}
-                            isActive={isCameraActive}
-                            video={true}
-                            audio={hasMicPermission}
-                        />
-                        {/* Dark Overlay for readability */}
-                        <View className="absolute inset-0 bg-black/40" />
-                    </View>
-                )}
+                {/* 1. Camera Layer (Background) */}
+                {cameraLayer}
 
                 {/* Fallback if no device */}
                 {activeScript?.mode === 'phone' && !activeDevice && (
@@ -947,9 +1073,9 @@ export default function Teleprompter() {
                 )}
 
                 {/* Top Left Back Button */}
-                <View className={`absolute ${isLandscape ? "top-6 left-10" : "top-20 left-6"} z-50 flex-row gap-4`}>
+                <View style={{ zIndex: 9999 }} className={`absolute ${isLandscape ? "top-6 left-10" : "top-20 left-6"} flex-row gap-4`}>
                     <TouchableOpacity
-                        className={`bg-black/60 ${isLandscape ? "p-2 px-3" : "p-3 px-5"} rounded-full border border-white/20 blur-md flex-row items-center gap-2`}
+                        className={`bg-black/60 ${isLandscape ? "p-2 px-3" : "p-3 px-5"} z-50 rounded-full border border-white/20 ${Platform.OS === 'web' ? "" : "blur-md"} flex-row items-center gap-2`}
                         onPress={handleBack}
                     >
                         <ChevronLeft color="white" size={20} />
@@ -958,9 +1084,9 @@ export default function Teleprompter() {
                 </View>
 
                 {/* Top Right Search Button */}
-                <View className={`absolute ${isLandscape ? "top-6 right-10" : "top-20 right-6"} z-50 flex-row gap-4`}>
+                <View style={{ zIndex: 9999 }} className={`absolute ${isLandscape ? "top-6 right-10" : "top-20 right-6"} z-50 flex-row gap-4`}>
                     {isSearchActive ? (
-                        <View className="flex-row items-center bg-black/60 border border-white/20 px-4 h-12 rounded-full blur-md shadow-2xl min-w-[220px]">
+                        <View className={`flex-row items-center bg-black/60 border border-white/20 px-4 h-12 rounded-full ${Platform.OS === 'web' ? "" : "blur-md"} shadow-2xl min-w-[220px] z-50`}>
                             <View className="flex-1 flex-row items-center h-full">
                                 <TextInput
                                     ref={searchInputRef}
@@ -993,7 +1119,7 @@ export default function Teleprompter() {
                         </View >
                     ) : (
                         <TouchableOpacity
-                            className={`bg-black/60 ${isLandscape ? "p-3" : "p-4"} rounded-full border border-white/20 blur-md items-center justify-center`}
+                            className={`bg-black/60 ${isLandscape ? "p-3" : "p-4"} rounded-full border border-white/20 ${Platform.OS === 'web' ? "" : "blur-md"} items-center justify-center`}
                             onPress={toggleSearch}
                         >
                             <Search color="white" size={20} />
@@ -1002,14 +1128,14 @@ export default function Teleprompter() {
                 </View >
 
                 {/* Debug Transcript Overlay (Temporary for Phase 2) */}
-                {
+                {/* {
                     isListening && (
                         <View className="absolute top-24 left-6 right-6 bg-black/50 p-2 rounded z-40 pointer-events-none">
                             <Text className="text-yellow-400 text-xs font-mono">{i18n.t('listening')}: {transcript}</Text>
                             {voiceError && <Text className="text-red-500 text-xs">{i18n.t('error')}: {voiceError.message}</Text>}
                         </View>
                     )
-                }
+                } */}
 
                 {/* Script Container */}
                 <View className="absolute inset-x-0 top-0 bottom-0">
@@ -1020,7 +1146,8 @@ export default function Teleprompter() {
                             style={{
                                 flex: 1,
                                 backgroundColor: activeScript?.mode === 'phone' ? 'rgba(0,0,0,0.5)' : 'black',
-                                paddingHorizontal: isLandscape ? 60 : 24
+                                paddingHorizontal: Platform.OS === 'web' ? Math.max(24, (windowWidth - 800) / 2) : (isLandscape ? 60 : 24),
+                                zIndex: 1, // Ensure this is lower than top controls (z-50)
                             }}
                             contentContainerStyle={{ flexGrow: 1 }}
                         >
@@ -1200,11 +1327,12 @@ export default function Teleprompter() {
                 <View
                     className={`absolute ${isLandscape ? "bottom-4" : "bottom-6"} bg-black/80 rounded-3xl border border-white/10 p-4 pt-0 z-50 shadow-2xl`}
                     style={{
-                        left: isLandscape ? 120 : 24,
-                        right: isLandscape ? 120 : 24
+                        left: Platform.OS === 'web' ? Math.max(24, (windowWidth - 600) / 2) : (isLandscape ? 120 : 24),
+                        right: Platform.OS === 'web' ? Math.max(24, (windowWidth - 600) / 2) : (isLandscape ? 120 : 24),
+                        zIndex: 100, // Ensure this is definitely on top
                     }}
                 >
-                    {activeScript?.mode === 'phone' && !isRecording && (
+                    {activeScript?.mode === 'phone' && Platform.OS !== 'web' && !isRecording && (
                         <TouchableOpacity
                             className="absolute -top-14 left-0 bg-black/60 p-2.5 rounded-full border border-white/20 blur-md items-center justify-center"
                             onPress={() => setCameraFacing(prev => prev === 'front' ? 'back' : 'front')}
@@ -1292,7 +1420,7 @@ export default function Teleprompter() {
                     {/* Bottom Row: Controls + Done Button */}
                     <View className="flex-row justify-between items-center">
                         <View style={{ width: 60, alignItems: 'center', justifyContent: 'center' }}>
-                            {activeScript?.mode === 'phone' && (
+                            {(activeScript?.mode === 'phone' || Platform.OS === 'web') && (
                                 <TouchableOpacity
                                     onPress={toggleRecording}
                                     disabled={isCallActive && !isRecording}

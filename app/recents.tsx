@@ -1,4 +1,4 @@
-import { View, Text, TouchableOpacity, FlatList, useWindowDimensions, useColorScheme } from 'react-native';
+import { View, Text, TouchableOpacity, FlatList, useWindowDimensions, useColorScheme, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { useSQLiteContext } from 'expo-sqlite';
@@ -104,36 +104,43 @@ export default function Recents() {
     };
 
     return (
-        <View
-            className="flex-1 bg-white dark:bg-black p-4"
-            style={{ paddingHorizontal: isLandscape ? 60 : 24 }}
-        >
-            {scripts.length === 0 ? (
-                <View className="flex-1 items-center justify-center">
-                    <Text className="text-zinc-400 dark:text-zinc-500 text-lg">{i18n.t('noSavedScripts')}</Text>
-                </View>
-            ) : (
-                <FlatList
-                    className="gap-4"
-                    data={scripts}
-                    keyExtractor={(item) => item.id.toString()}
-                    renderItem={({ item }) => (
-                        <TouchableOpacity
-                            className="bg-zinc-50 dark:bg-zinc-900 p-4 rounded-xl flex-row items-center border border-zinc-200 dark:border-zinc-800 mb-3"
-                            onPress={() => handleSelectScript(item)}
-                        >
-                            <View className="bg-zinc-100 dark:bg-zinc-800 p-3 rounded-lg mr-4">
-                                <FileText color={isDarkMode ? "#a1a1aa" : "#71717a"} size={24} />
-                            </View>
-                            <View className="flex-1">
-                                <Text className="text-black dark:text-white text-lg font-semibold" numberOfLines={1}>{item.title}</Text>
-                                <Text className="text-zinc-500 dark:text-zinc-400 text-sm" numberOfLines={1}>{getDisplayableText(item)}</Text>
-                            </View>
-                            <ChevronRight color={isDarkMode ? "#52525b" : "#a1a1aa"} size={20} />
-                        </TouchableOpacity>
-                    )}
-                />
-            )}
+        <View className="flex-1 bg-white dark:bg-black">
+            <View
+                className="flex-1 p-4"
+                style={{
+                    paddingHorizontal: isLandscape ? 60 : 24,
+                    width: '100%',
+                    maxWidth: Platform.OS === 'web' ? 800 : undefined,
+                    alignSelf: 'center',
+                }}
+            >
+                {scripts.length === 0 ? (
+                    <View className="flex-1 items-center justify-center">
+                        <Text className="text-zinc-400 dark:text-zinc-500 text-lg">{i18n.t('noSavedScripts')}</Text>
+                    </View>
+                ) : (
+                    <FlatList
+                        className="gap-4"
+                        data={scripts}
+                        keyExtractor={(item) => item.id.toString()}
+                        renderItem={({ item }) => (
+                            <TouchableOpacity
+                                className="bg-zinc-50 dark:bg-zinc-900 p-4 rounded-xl flex-row items-center border border-zinc-200 dark:border-zinc-800 mb-3"
+                                onPress={() => handleSelectScript(item)}
+                            >
+                                <View className="bg-zinc-100 dark:bg-zinc-800 p-3 rounded-lg mr-4">
+                                    <FileText color={isDarkMode ? "#a1a1aa" : "#71717a"} size={24} />
+                                </View>
+                                <View className="flex-1">
+                                    <Text className="text-black dark:text-white text-lg font-semibold" numberOfLines={1}>{item.title}</Text>
+                                    <Text className="text-zinc-500 dark:text-zinc-400 text-sm" numberOfLines={1}>{getDisplayableText(item)}</Text>
+                                </View>
+                                <ChevronRight color={isDarkMode ? "#52525b" : "#a1a1aa"} size={20} />
+                            </TouchableOpacity>
+                        )}
+                    />
+                )}
+            </View>
         </View>
     );
 }

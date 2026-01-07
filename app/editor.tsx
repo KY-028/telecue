@@ -233,7 +233,13 @@ export default function ScriptEditor() {
         >
             <View
                 className="flex-1"
-                style={{ paddingHorizontal: isLandscape ? 60 : 24, paddingTop: 24 }}
+                style={{
+                    paddingHorizontal: isLandscape ? 60 : 24,
+                    paddingTop: 24,
+                    width: '100%',
+                    maxWidth: Platform.OS === 'web' ? 800 : undefined,
+                    alignSelf: 'center',
+                }}
             >
                 <TextInput
                     placeholder={i18n.t('scriptTitle')}

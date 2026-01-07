@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { AppState, AppStateStatus } from 'react-native';
+import { AppState, AppStateStatus, Platform } from 'react-native';
 import { AssemblyAIProvider } from '../services/transcription/AssemblyAIProvider';
 import { ITranscriptionService } from '../services/transcription/types';
 
@@ -100,7 +100,7 @@ export function useVoiceRecognition() {
         isListening,
         isReady,
         error,
-        isCallActive,
+        isCallActive: Platform.OS === 'web' ? false : isCallActive,
         start,
         stop
     };

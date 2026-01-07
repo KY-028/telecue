@@ -1,4 +1,4 @@
-import { View, Text, TouchableOpacity, ScrollView, Switch, Dimensions, useWindowDimensions, useColorScheme } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, Switch, Dimensions, useWindowDimensions, useColorScheme, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useScriptStore } from '../store/useScriptStore';
 import { Monitor, Smartphone, Type, MoveHorizontal, Gauge } from 'lucide-react-native';
@@ -166,7 +166,12 @@ export default function Setup() {
             <ScrollView className="flex-1 bg-white dark:bg-black">
                 <View
                     className="p-6 pb-20"
-                    style={{ paddingHorizontal: isLandscape ? 60 : 24 }}
+                    style={{
+                        paddingHorizontal: isLandscape ? 60 : 24,
+                        width: '100%',
+                        maxWidth: Platform.OS === 'web' ? 800 : undefined,
+                        alignSelf: 'center',
+                    }}
                 >
                     {/* Visual Preview with edge indicators */}
                     <DraggableMarginPreview activeScript={activeScript} updateSettings={updateActiveScriptSettings} />
