@@ -30,8 +30,9 @@
       "package": "com.ky028sorganization.telecue"
     },
     "web": {
-      "favicon": "./assets/favicon.png",
-      "bundler": "metro"
+      "favicon": "./assets/telecue_logo.png",
+      "bundler": "metro",
+      "output": "server"
     },
     "plugins": [
       "expo-router",

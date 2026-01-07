@@ -1,5 +1,5 @@
 import { Platform, useColorScheme } from 'react-native';
-if (Platform.OS === 'web') {
+if (Platform.OS === 'web' && typeof window !== 'undefined') {
     // @ts-ignore
     window._WORKLET = false;
     // @ts-ignore
