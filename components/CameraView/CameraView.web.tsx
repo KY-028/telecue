@@ -139,15 +139,8 @@ export const useCameraPermission = () => {
                         setHasPermission(result.state === 'granted');
                     });
                 } else {
-                    // Fallback: try to get user media (will prompt if needed)
-                    // We don't actually start the stream, just check if we can
-                    try {
-                        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-                        setHasPermission(true);
-                        stream.getTracks().forEach(track => track.stop());
-                    } catch {
-                        setHasPermission(false);
-                    }
+                    // Fallback: assume false or wait for explicit request
+                    setHasPermission(false);
                 }
             } catch (error) {
                 console.error('Error checking camera permission:', error);
@@ -188,13 +181,8 @@ export const useMicrophonePermission = () => {
                         setHasPermission(result.state === 'granted');
                     });
                 } else {
-                    try {
-                        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                        setHasPermission(true);
-                        stream.getTracks().forEach(track => track.stop());
-                    } catch {
-                        setHasPermission(false);
-                    }
+                    // Fallback: assume false or wait for explicit request
+                    setHasPermission(false);
                 }
             } catch (error) {
                 console.error('Error checking microphone permission:', error);
@@ -343,6 +331,13 @@ const CameraView = forwardRef<CameraRef, CameraProps>(({ device, isActive = true
         },
 
         startRecording: async (options: RecordingOptions) => {
+            // Retry mechanisms to wait for stream if it's rebooting (e.g. after permission grant)
+            let attempts = 0;
+            while (!streamRef.current && attempts < 20) {
+                await new Promise(r => setTimeout(r, 100)); // Wait 100ms
+                attempts++;
+            }
+
             if (!streamRef.current) {
                 const err = new Error('Camera stream not available');
                 console.error(err);

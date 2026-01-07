@@ -1002,7 +1002,7 @@ export default function Teleprompter() {
 
     // --- Memoized Camera View to prevent flashing on state updates ---
     const cameraLayer = useMemo(() => {
-        if ((activeScript?.mode === 'phone' || Platform.OS === 'web') && activeDevice) {
+        if (activeScript?.mode === 'phone' && activeDevice) {
             return (
                 <View style={StyleSheet.absoluteFill}>
                     <CameraView
@@ -1420,7 +1420,7 @@ export default function Teleprompter() {
                     {/* Bottom Row: Controls + Done Button */}
                     <View className="flex-row justify-between items-center">
                         <View style={{ width: 60, alignItems: 'center', justifyContent: 'center' }}>
-                            {(activeScript?.mode === 'phone' || Platform.OS === 'web') && (
+                            {(activeScript?.mode === 'phone') && (
                                 <TouchableOpacity
                                     onPress={toggleRecording}
                                     disabled={isCallActive && !isRecording}
