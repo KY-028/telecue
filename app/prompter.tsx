@@ -179,6 +179,10 @@ export default function Teleprompter() {
     // Auto-Start Listening when in 'auto' mode
     useEffect(() => {
         if (scrollMode === 'auto') {
+            if (!hasMicPermission) {
+                console.log("[Prompter] Auto mode selected but mic permission missing. Waiting for permission.");
+                return;
+            }
             if (isCallActive) {
                 Alert.alert(i18n.t('modeUnavailable'), i18n.t('callActiveError'));
                 setScrollMode('fixed');
@@ -492,7 +496,7 @@ export default function Teleprompter() {
         let initialBrightness: number;
 
         const setupBrightness = async () => {
-            if (Platform.OS === 'web') return;
+            if (Platform.OS === 'web' || Platform.OS === 'android') return;
             try {
                 initialBrightness = await Brightness.getBrightnessAsync();
                 const { status } = await Brightness.requestPermissionsAsync();
@@ -1033,7 +1037,7 @@ export default function Teleprompter() {
         );
     }
 
-    if (Platform.OS !== 'web' && (!hasCamPermission || !hasMicPermission)) return <View className="bg-black flex-1" />;
+
 
     if ((!hasCamPermission || !hasMicPermission) && activeScript?.mode === 'phone') {
         return (
