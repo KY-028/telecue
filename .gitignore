@@ -43,3 +43,5 @@ yarn-error.*
 .expo/
 
 googlecloudsttkey.json
+
+bundled app/

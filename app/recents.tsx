@@ -1,9 +1,9 @@
 import { View, Text, TouchableOpacity, FlatList, useWindowDimensions, useColorScheme, Platform } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, Stack } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useScriptStore } from '../store/useScriptStore';
-import { FileText, ChevronRight } from 'lucide-react-native';
+import { FileText, ChevronRight, ChevronLeft } from 'lucide-react-native';
 import i18n from '../utils/i18n';
 import { parseHtmlToStyledSegments } from '../utils/htmlParser';
 
@@ -100,11 +100,33 @@ export default function Recents() {
             // Store ID to support updates later
             id: script.id
         });
-        router.push('/setup');
+        router.push('/editor');
     };
 
     return (
         <View className="flex-1 bg-white dark:bg-black">
+            <Stack.Screen
+                options={{
+                    headerLeft: ({ tintColor }) => (
+                        <TouchableOpacity
+                            onPress={() => {
+                                if (router.canGoBack()) {
+                                    router.back();
+                                } else {
+                                    router.replace('/');
+                                }
+                            }}
+                            className="flex-row items-center"
+                            style={{ marginLeft: 8 }}
+                        >
+                            <ChevronLeft size={28} color={tintColor} />
+                            {Platform.OS === 'ios' && (
+                                <Text style={{ color: tintColor, fontSize: 17 }}>{i18n.t('back')}</Text>
+                            )}
+                        </TouchableOpacity>
+                    ),
+                }}
+            />
             <View
                 className="flex-1 p-4"
                 style={{
