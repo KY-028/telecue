@@ -1150,7 +1150,7 @@ export default function Teleprompter() {
                             style={{
                                 flex: 1,
                                 backgroundColor: activeScript?.mode === 'phone' ? 'rgba(0,0,0,0.5)' : 'black',
-                                paddingHorizontal: Platform.OS === 'web' ? Math.max(24, (windowWidth - 800) / 2) : (isLandscape ? 60 : 24),
+                                paddingHorizontal: isLandscape ? 60 : 24,
                                 zIndex: 1, // Ensure this is lower than top controls (z-50)
                             }}
                             contentContainerStyle={{ flexGrow: 1 }}
