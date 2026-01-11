@@ -563,6 +563,18 @@ export default function Teleprompter() {
                 pixelsPerSecond = (activeScript?.speed || 1) * 30;
             }
 
+            // Start of Web Speed Adjustment
+            // The user report: "Even at 2x speed, the text is going down really really slowly... 
+            // adjust the scroll speed slightly such that it flows faster proportional to the screen size"
+            if (Platform.OS === 'web') {
+                // We use a baseline width of 800px.
+                // On a 1200px screen, this applies a 1.5x multiplier, which is about right.
+                // This makes the PIXEL speed roughly consistent, rather than the WPM consistent.
+                const speedFactor = windowWidth / 800;
+                pixelsPerSecond = pixelsPerSecond * speedFactor;
+            }
+            // End of Web Speed Adjustment
+
             const duration = (distance / pixelsPerSecond) * 1000;
 
             scrollY.value = withTiming(targetY, {
@@ -570,7 +582,7 @@ export default function Teleprompter() {
                 easing: Easing.linear,
             });
         }
-    }, [isPlaying, activeScript?.speed, contentHeight, scrollMode, containerHeight]);
+    }, [isPlaying, activeScript?.speed, contentHeight, scrollMode, containerHeight, windowWidth]);
 
     useEffect(() => {
         if (isPlaying) {

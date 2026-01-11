@@ -4,6 +4,7 @@ import { View, Text, TouchableOpacity, ScrollView, Platform } from 'react-native
 import { EditorHookResult, RichTextEditorProps, RichTextEditorRef, EditorState, RichTextEditorComponentProps, FormattingToolbarComponentProps } from './types';
 import i18n from '../../utils/i18n';
 import { Bold, Italic, Underline, Palette } from 'lucide-react-native';
+import { shouldResetToDefaultColor } from '../../utils/colorUtils';
 
 const FONT_FAMILY = '-apple-system, Roboto, "Helvetica Neue", system-ui, sans-serif';
 
@@ -56,6 +57,43 @@ function useRichTextEditorInternal(props: RichTextEditorProps): EditorHookResult
                     onChange({ html, text, json: { content: html } });
                 }
                 checkState();
+            },
+            onPaste: (e: any) => {
+                e.preventDefault();
+                const text = e.clipboardData.getData('text/plain');
+                const html = e.clipboardData.getData('text/html');
+
+                if (html) {
+                    const doc = new DOMParser().parseFromString(html, 'text/html');
+                    const walker = document.createTreeWalker(doc.body, NodeFilter.SHOW_ELEMENT);
+                    let node;
+                    while (node = walker.nextNode()) {
+                        const el = node as HTMLElement;
+
+                        // Enforce App Font
+                        if (el.style.fontFamily) {
+                            el.style.fontFamily = '';
+                        }
+
+                        // Check Styles
+                        if (el.style.color) {
+                            if (shouldResetToDefaultColor(el.style.color)) {
+                                el.style.removeProperty('color');
+                            }
+                        }
+
+                        // Check Font Tags
+                        if (el.tagName.toLowerCase() === 'font' && el.getAttribute('color')) {
+                            const colorAttr = el.getAttribute('color')!;
+                            if (shouldResetToDefaultColor(colorAttr)) {
+                                el.removeAttribute('color');
+                            }
+                        }
+                    }
+                    document.execCommand('insertHTML', false, doc.body.innerHTML);
+                } else {
+                    document.execCommand('insertText', false, text);
+                }
             }
         },
         // Mimic Native Editor API
@@ -140,6 +178,7 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorCompon
                     overflowWrap: 'break-word'
                 }}
                 dangerouslySetInnerHTML={undefined}
+                onPaste={editor.bind.onPaste}
                 suppressContentEditableWarning={true}
                 data-placeholder={editor.placeholder}
             />

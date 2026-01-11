@@ -109,6 +109,11 @@ export function parseHtmlToStyledSegments(html: string): { segments: StyledSegme
                     newStyle.fontStyle = 'italic';
                 } else if (tagName === 'u') {
                     newStyle.textDecorationLine = 'underline';
+                } else if (tagName === 'font') {
+                    const match = token.match(/color="([^"]+)"/);
+                    if (match && match[1]) {
+                        newStyle.color = match[1];
+                    }
                 } else if (tagName === 'span') {
                     const match = token.match(/style="([^"]+)"/);
                     if (match && match[1]) {

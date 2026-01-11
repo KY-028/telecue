@@ -263,6 +263,10 @@ export default function ScriptEditor() {
                     <TouchableOpacity
                         className="bg-blue-600 p-5 rounded-2xl items-center shadow-lg mt-4 mb-6"
                         onPress={handleNext}
+                        {...(Platform.OS === 'web' ? {
+                            // Prevent focus loss on web to avoid layout shift (hiding toolbar) cancelling the click
+                            onMouseDown: (e: any) => e.preventDefault()
+                        } : {})}
                     >
                         <Text className="text-white text-xl font-bold">{i18n.t('configureSetup')} →</Text>
                     </TouchableOpacity>
