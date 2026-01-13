@@ -6,7 +6,7 @@ interface RGB { r: number; g: number; b: number; }
 interface LAB { l: number; a: number; b: number; }
 
 export const DEFINED_COLORS = [
-    '#FFFFFF', '#000000', '#EF4444', '#3B82F6', '#22C55E', '#EAB308'
+    '#EF4444', '#3B82F6', '#22C55E', '#EAB308'
 ];
 
 function parseColorToRgb(colorStr: string): RGB | null {
