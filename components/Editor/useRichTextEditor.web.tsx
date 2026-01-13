@@ -75,6 +75,14 @@ function useRichTextEditorInternal(props: RichTextEditorProps): EditorHookResult
                             el.style.fontFamily = '';
                         }
 
+                        // Remove Highlights/Backgrounds
+                        if (el.style.backgroundColor) {
+                            el.style.removeProperty('background-color');
+                        }
+                        if (el.style.background) {
+                            el.style.removeProperty('background');
+                        }
+
                         // Check Styles
                         if (el.style.color) {
                             if (shouldResetToDefaultColor(el.style.color)) {
@@ -88,6 +96,11 @@ function useRichTextEditorInternal(props: RichTextEditorProps): EditorHookResult
                             if (shouldResetToDefaultColor(colorAttr)) {
                                 el.removeAttribute('color');
                             }
+                        }
+
+                        // Neutralize <mark> tags (default browser highlight)
+                        if (el.tagName.toLowerCase() === 'mark') {
+                            el.style.backgroundColor = 'transparent';
                         }
                     }
                     document.execCommand('insertHTML', false, doc.body.innerHTML);
