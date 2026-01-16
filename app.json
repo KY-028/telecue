@@ -42,6 +42,9 @@
       "bundler": "metro",
       "output": "single"
     },
+    "experiments": {
+      "baseUrl": "/telecue"
+    },
     "plugins": [
       "expo-router",
       "expo-sqlite",
