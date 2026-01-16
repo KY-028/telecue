@@ -552,10 +552,23 @@ export default function Teleprompter() {
 
             let pixelsPerSecond = 30;
 
-            const wordCount = activeScript?.content?.trim().split(/\s+/).length || 1;
-            const pixelsPerWord = contentHeight / wordCount;
             const wpm = speedToWpm(activeScript?.speed || 1);
             const wordsPerSecond = wpm / 60;
+
+            // Hybrid approach:
+            // 1. Count Western words (delimited by spaces)
+            // 2. Count CJK characters individually (as they don't use spaces)
+            // Weighting: User specified that 2.3 CJK chars ~= 1 English word in reading time.
+
+            const rawText = activeScript?.plain_text || activeScript?.content?.replace(/<[^>]*>/g, ' ') || '';
+            const cjkRegex = /[\u4e00-\u9fa5]/g;
+            const cjkMatches = rawText.match(cjkRegex);
+            const cjkCount = cjkMatches ? cjkMatches.length : 0;
+            const nonCjkText = rawText.replace(cjkRegex, ' ');
+            const nonCjkWordCount = nonCjkText.trim().split(/\s+/).filter(w => w.length > 0).length;
+
+            const effectiveWordCount = nonCjkWordCount + (cjkCount / 2.3) || 1;
+            const pixelsPerWord = contentHeight / effectiveWordCount;
 
             if (scrollMode === 'wpm' || scrollMode === 'fixed') {
                 pixelsPerSecond = wordsPerSecond * pixelsPerWord;
@@ -567,10 +580,13 @@ export default function Teleprompter() {
             // The user report: "Even at 2x speed, the text is going down really really slowly... 
             // adjust the scroll speed slightly such that it flows faster proportional to the screen size"
             if (Platform.OS === 'web') {
+                // Calculate effective width (Window - Margins)
+                const currentMargin = activeScript?.margin || 0;
+                const effectiveWidth = windowWidth - (currentMargin * 2);
+
                 // We use a baseline width of 800px.
-                // On a 1200px screen, this applies a 1.5x multiplier, which is about right.
-                // This makes the PIXEL speed roughly consistent, rather than the WPM consistent.
-                const speedFactor = windowWidth / 800;
+                // Speed scales with the ACTUAL text width, ensuring consistent perceived speed
+                const speedFactor = Math.max(0.5, effectiveWidth / 1000);
                 pixelsPerSecond = pixelsPerSecond * speedFactor;
             }
             // End of Web Speed Adjustment
@@ -582,7 +598,7 @@ export default function Teleprompter() {
                 easing: Easing.linear,
             });
         }
-    }, [isPlaying, activeScript?.speed, contentHeight, scrollMode, containerHeight, windowWidth]);
+    }, [isPlaying, activeScript?.speed, activeScript?.margin, contentHeight, scrollMode, containerHeight, windowWidth]);
 
     useEffect(() => {
         if (isPlaying) {
@@ -590,7 +606,38 @@ export default function Teleprompter() {
         } else {
             cancelAnimation(scrollY);
         }
-    }, [isPlaying, activeScript?.speed, contentHeight, scrollMode, startAutoScroll]);
+    }, [isPlaying, activeScript?.speed, activeScript?.margin, contentHeight, scrollMode, startAutoScroll]);
+
+    // --- Web Responsive Margin Logic ---
+    // Maintains constant text width when resizing window
+    const targetContentWidthRef = useRef<{ id: number | undefined; width: number } | null>(null);
+
+    useEffect(() => {
+        if (Platform.OS === 'web' && activeScript) {
+            const currentMargin = activeScript.margin || 0;
+
+            // 1. Initialize or Reset logic
+            // If we don't have a target, or the ID has changed, set the new target based on current state.
+            if (targetContentWidthRef.current === null || targetContentWidthRef.current.id !== activeScript.id) {
+                const currentEffectiveWidth = windowWidth - (currentMargin * 2);
+                targetContentWidthRef.current = {
+                    id: activeScript.id,
+                    width: currentEffectiveWidth
+                };
+            } else {
+                // 2. Resize Logic: Adjust margin to maintain target width
+                const target = targetContentWidthRef.current.width;
+
+                // Calculate what margin leads to target width
+                // windowWidth - 2*m = target => 2*m = windowWidth - target => m = (windowWidth - target)/2
+                const desiredMargin = Math.max(0, (windowWidth - target) / 2);
+
+                if (Math.abs(desiredMargin - currentMargin) > 1) {
+                    updateActiveScriptSettings({ margin: Math.round(desiredMargin) });
+                }
+            }
+        }
+    }, [windowWidth, activeScript?.id]); // Reset on script change, re-run on resize
 
     // Speed Sync Logic (Simplified to avoid warnings)
     useEffect(() => {
