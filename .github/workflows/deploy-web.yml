@@ -4,6 +4,7 @@ on:
   push:
     branches: [ "main" ]
 
+# Give the Pages deployment the required permissions
 permissions:
   contents: read
   pages: write
@@ -14,27 +15,33 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 🛠 Checkout code
+      # 1) Checkout your code
       - uses: actions/checkout@v5
 
-      # 📦 Setup Node
+      # 2) Set up Node
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
 
-      # 📥 Install deps
+      # 3) Install dependencies
       - run: npm install
 
-      # 🌐 Build web export
+      # 4) Build the Expo web export
       - name: Build Expo web
         run: |
           npx expo export --platform web
+          # Optional: help SPA support on GitHub Pages
+          cp dist/index.html dist/404.html
 
-      # 🗜 Upload artifact for deployment
+      # 5) Configure GitHub Pages for deployment
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      # 6) Upload the static site artifact
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v4
         with:
-          path: ./dist
+          path: dist
 
   deploy:
     needs: build
@@ -49,5 +56,4 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@v4
         with:
-          # token can be omitted because GitHub Actions auto-provides it
           token: ${{ secrets.GITHUB_TOKEN }}
