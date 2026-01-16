@@ -2,35 +2,52 @@ name: Build and Deploy Expo Web
 
 on:
   push:
-    branches: [ main ]
+    branches: [ "main" ]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      # 🛠 Checkout code
+      - uses: actions/checkout@v5
 
+      # 📦 Setup Node
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: "20"
 
+      # 📥 Install deps
       - run: npm install
 
+      # 🌐 Build web export
       - name: Build Expo web
-        run: npx expo export --platform web
+        run: |
+          npx expo export --platform web
 
-      - name: Upload Pages Artifact
-        uses: actions/upload-pages-artifact@v1
+      # 🗜 Upload artifact for deployment
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v4
         with:
-          path: dist
+          path: ./dist
 
   deploy:
     needs: build
     runs-on: ubuntu-latest
 
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
     steps:
       - name: Deploy to GitHub Pages
-        uses: actions/deploy-pages@v1
+        id: deployment
+        uses: actions/deploy-pages@v4
         with:
+          # token can be omitted because GitHub Actions auto-provides it
           token: ${{ secrets.GITHUB_TOKEN }}
