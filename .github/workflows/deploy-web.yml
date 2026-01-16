@@ -32,6 +32,9 @@ jobs:
           npx expo export --platform web
           # Optional: help SPA support on GitHub Pages
           cp dist/index.html dist/404.html
+          # Add base tag for GitHub Pages subpath
+          sed -i '' 's|<head>|<head><base href="/telecue/">|' dist/index.html
+          sed -i '' 's|<head>|<head><base href="/telecue/">|' dist/404.html
 
       # 5) Configure GitHub Pages for deployment
       - name: Configure Pages
