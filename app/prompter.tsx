@@ -1425,14 +1425,18 @@ export default function Teleprompter() {
                                         : `${i18n.t('speed')}: ${normalizedToSpeed(displayValue).toFixed(1)}x`}
                                 </Text>
                             </View>
-                            <View className={`flex-row items-center justify-between ${isLandscape ? "" : "mb-2"}`}>
-                                <View className="w-10 h-5 items-center justify-center">
-                                    <Animated.Text style={wpmLabelStyle} className="absolute text-white text-[10px] font-bold">
-                                        {Math.round(WPM_MIN)}
-                                    </Animated.Text>
-                                    <Animated.Text style={fixedLabelStyle} className="absolute text-white text-[10px] font-bold">
-                                        {i18n.t('slow')}
-                                    </Animated.Text>
+                            <View className="flex-row items-center justify-between mb-1">
+                                <View className="w-10 h-5 items-center justify-center relative">
+                                    <Animated.View style={[wpmLabelStyle, { position: 'absolute', width: '100%', height: '100%', justifyContent: 'center', alignItems: 'center' }]}>
+                                        <Text className="text-white text-[10px] font-bold text-center">
+                                            {Math.round(WPM_MIN)}
+                                        </Text>
+                                    </Animated.View>
+                                    <Animated.View style={[fixedLabelStyle, { position: 'absolute', width: '100%', height: '100%', justifyContent: 'center', alignItems: 'center' }]}>
+                                        <Text className="text-white text-[10px] font-bold text-center">
+                                            {i18n.t('slow')}
+                                        </Text>
+                                    </Animated.View>
                                 </View>
                                 <View className="flex-1 mx-4">
                                     <Slider
@@ -1455,13 +1459,17 @@ export default function Teleprompter() {
                                         thumbTintColor="#f97316"
                                     />
                                 </View>
-                                <View className="w-10 h-5 items-center justify-center">
-                                    <Animated.Text style={wpmLabelStyle} className="absolute text-white text-[10px] font-bold">
-                                        {Math.round(WPM_MAX)}
-                                    </Animated.Text>
-                                    <Animated.Text style={fixedLabelStyle} className="absolute text-white text-[10px] font-bold">
-                                        {i18n.t('fast')}
-                                    </Animated.Text>
+                                <View className="w-10 h-5 items-center justify-center relative">
+                                    <Animated.View style={[wpmLabelStyle, { position: 'absolute', width: '100%', height: '100%', justifyContent: 'center', alignItems: 'center' }]}>
+                                        <Text className="text-white text-[10px] font-bold text-center">
+                                            {Math.round(WPM_MAX)}
+                                        </Text>
+                                    </Animated.View>
+                                    <Animated.View style={[fixedLabelStyle, { position: 'absolute', width: '100%', height: '100%', justifyContent: 'center', alignItems: 'center' }]}>
+                                        <Text className="text-white text-[10px] font-bold text-center">
+                                            {i18n.t('fast')}
+                                        </Text>
+                                    </Animated.View>
                                 </View>
                             </View>
                         </View>
