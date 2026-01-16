@@ -40,7 +40,7 @@
     "web": {
       "favicon": "./assets/telecue_logo.png",
       "bundler": "metro",
-      "output": "server"
+      "output": "single"
     },
     "plugins": [
       "expo-router",
