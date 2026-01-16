@@ -180,7 +180,13 @@ export default function Teleprompter() {
     useEffect(() => {
         if (scrollMode === 'auto') {
             if (!hasMicPermission) {
-                console.log("[Prompter] Auto mode selected but mic permission missing. Waiting for permission.");
+                console.log("[Prompter] Auto mode selected but mic permission missing. Requesting permission.");
+                requestMicPermission().then((granted) => {
+                    if (!granted) {
+                        Alert.alert(i18n.t('permissionNeeded'), i18n.t('micPermissionRequired'));
+                        setScrollMode('fixed');
+                    }
+                });
                 return;
             }
             if (isCallActive) {
@@ -202,7 +208,7 @@ export default function Teleprompter() {
         return () => {
             stopListening(); // Ensure socket closes on unmount
         };
-    }, [scrollMode]);
+    }, [scrollMode, hasMicPermission]);
 
     // --- Alignment State & Loading ---
     const [matchedIndex, setMatchedIndex] = useState(-1);  // Index into scriptWords (for rendering)

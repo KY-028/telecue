@@ -1,4 +1,4 @@
-import { View, Text, TouchableOpacity, ScrollView, Switch, Dimensions, useWindowDimensions, useColorScheme, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, Switch, Dimensions, useWindowDimensions, useColorScheme, Platform, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useScriptStore } from '../store/useScriptStore';
 import { Monitor, Smartphone, Type, MoveHorizontal, Gauge } from 'lucide-react-native';
@@ -211,21 +211,21 @@ export default function Setup() {
                         {/* Mode Select */}
                         <Text className="text-zinc-600 dark:text-zinc-400 font-bold mb-4 uppercase tracking-wider text-xs">{i18n.t('teleprompterMode')}</Text>
                         <View className="flex-row gap-4 mb-8">
-                            <TouchableOpacity
+                            <Pressable
                                 className={`flex-1 p-4 rounded-2xl border-2 ${activeScript.mode === 'phone' ? 'border-blue-600 bg-blue-600/10' : 'border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900'}`}
                                 onPress={() => updateActiveScriptSettings({ mode: 'phone' })}
                             >
                                 <Smartphone color={activeScript.mode === 'phone' ? '#2563eb' : (isDarkMode ? '#71717a' : '#a1a1aa')} size={24} />
                                 <Text className={`mt-2 font-semibold ${activeScript.mode === 'phone' ? (isDarkMode ? 'text-white' : 'text-blue-600') : (isDarkMode ? 'text-zinc-400' : 'text-zinc-500')}`}>{i18n.t('phoneRecord')}</Text>
-                            </TouchableOpacity>
+                            </Pressable>
 
-                            <TouchableOpacity
+                            <Pressable
                                 className={`flex-1 p-4 rounded-2xl border-2 ${activeScript.mode === 'rig' ? 'border-blue-600 bg-blue-600/10' : 'border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900'}`}
                                 onPress={() => updateActiveScriptSettings({ mode: 'rig' })}
                             >
                                 <Monitor color={activeScript.mode === 'rig' ? '#2563eb' : (isDarkMode ? '#71717a' : '#a1a1aa')} size={24} />
                                 <Text className={`mt-2 font-semibold ${activeScript.mode === 'rig' ? (isDarkMode ? 'text-white' : 'text-blue-600') : (isDarkMode ? 'text-zinc-400' : 'text-zinc-500')}`}>{i18n.t('teleprompterRig')}</Text>
-                            </TouchableOpacity>
+                            </Pressable>
                         </View>
 
                         <Text className="text-zinc-600 dark:text-zinc-400 font-bold mb-4 uppercase tracking-wider text-xs">{i18n.t('displayConfig')}</Text>
